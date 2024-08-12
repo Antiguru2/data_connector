@@ -4,19 +4,22 @@ from rest_framework import serializers
 from django.contrib.contenttypes.models import ContentType
 
 from html_constructor.models import (
-    HTMLConstruktor,
+    BaseHTMLBlock,
 )
 
 
-class HTMLConstruktorSerializer(serializers.HyperlinkedModelSerializer):
+class DefaultSerializer(serializers.HyperlinkedModelSerializer):
     
     class Meta:
-        model = HTMLConstruktor
-        fields = [
-            'id', 
-            'content_type', 
-            'object_id', 
-            'related_object'
-        ]
+        fields = '__all__'
 
+
+class BaseHTMLBlockSerializer(serializers.HyperlinkedModelSerializer):
+    
+    class Meta:
+        model = BaseHTMLBlock
+        fields = [
+            'id',
+            'name',
+        ]
 

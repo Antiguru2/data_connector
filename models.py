@@ -22,4 +22,3 @@ class ModelConnector(models.Model):
 
     def get_instruction(self):
         return None
-    
