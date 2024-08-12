@@ -8,11 +8,11 @@ from . import api
 
 urlpatterns = [
     path(
-        'api/get_models_data/', 
+        'data_connector/api/get_models_data/', 
         api.GetModelsData.as_view(),
     ),
     path(
-        'api/set_models_data/', 
+        'data_connector/api/set_models_data/', 
         api.SetModelsData.as_view(),
     ),
 ]

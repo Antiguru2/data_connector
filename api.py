@@ -28,6 +28,8 @@ from data_connector.serializers import (
 class GetModelsData(APIView):
 
     def get(self, request):
+        # models_names_list = request.GET.get('models_names_list')
+
         queryset = BaseHTMLBlock.objects.all()
         serializer = BaseHTMLBlockSerializer(queryset, many=True)
         return Response(serializer.data)
