@@ -27,7 +27,6 @@ from html_constructor.models import (
 )
 from data_connector.serializers import (
     DefaultSerializer,
-    BaseHTMLBlockSerializer,
     get_serializer_class_by_lower_name,
 )
 
