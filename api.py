@@ -1,8 +1,10 @@
 import tempfile
 import requests
 
+from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet
 
 from django.db import models
 from django.apps import apps
@@ -23,11 +25,14 @@ from django.views.decorators.http import require_POST
 # )
 from html_constructor.models import (
     BaseHTMLBlock,
-    Group,
+    BaseBlocksKit,
 )
 from data_connector.serializers import (
     DefaultSerializer,
     get_serializer_class_by_lower_name,
+)
+from data_connector.export_serializers.base_blocks_kit_serializers import (
+    BaseBlocksKitSerializer,
 )
 
 class BaseHTMLBlockUpdate(APIView):
@@ -92,18 +97,17 @@ class BaseHTMLBlockUpdate(APIView):
         base_html_blocks = request_data.get('base_html_blocks')
 
         if group_slug and base_html_blocks:
-            group, created = Group.objects.get_or_create(slug=group_slug)
+            base_blocks_kit, created = BaseBlocksKit.objects.get_or_create(slug=group_slug)
 
             for base_html_block in base_html_blocks:
                 context_items_data = base_html_block.get('context_items_data')
                 base_html_block_data = base_html_block.get('data')
+                base_html_block['base_blocks_kit'] = base_blocks_kit
 
                 template_body = base_html_block_data.pop('template_body')
 
                 new_base_html_block = BaseHTMLBlock.objects.create(**base_html_block_data)
                 new_base_html_block.set_html_to_file(template_body)
-
-                group.base_html_blocks.add(new_base_html_block)
                 
                 for context_item in context_items_data:
                     context_item_class_name = context_item.get('context_item_class_name')
@@ -141,6 +145,18 @@ class BaseHTMLBlockUpdate(APIView):
         else:
             return Response({}, status=400)
 
+
+class BaseBlocksKitUpdate(ModelViewSet):
+    queryset = BaseBlocksKit.objects.all()
+    serializer = BaseBlocksKitSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
 
 # def set_models_data(request):
 #     status = 'error'

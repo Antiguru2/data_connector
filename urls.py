@@ -8,7 +8,11 @@ from . import api
 
 urlpatterns = [
     path(
-        'api/base_html_block_update/', 
+        'base_html_block_update/', 
         api.BaseHTMLBlockUpdate.as_view(),
+    ),
+    path(
+        'base_blocks_kit_update/', 
+        api.BaseBlocksKitUpdate.as_view(),
     ),
 ]
