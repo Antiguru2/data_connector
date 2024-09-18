@@ -35,6 +35,7 @@ from data_connector.export_serializers.base_blocks_kit_serializers import (
     BaseBlocksKitSerializer,
 )
 
+
 class BaseHTMLBlockUpdate(APIView):
 
     def get(self, request):
