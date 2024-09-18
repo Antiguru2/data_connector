@@ -1,4 +1,12 @@
+import base64
+import tempfile
+
 from rest_framework import serializers
+
+from django.apps import apps
+from django.core.files.base import ContentFile
+from django.contrib.contenttypes.models import ContentType
+from django.core.files.uploadedfile import InMemoryUploadedFile
 
 from site_pages.models import SitePage
 from html_constructor.models import (
@@ -6,16 +14,45 @@ from html_constructor.models import (
     BaseHTMLBlock,
     NestedBaseHTMLBlock,
     TextItem,
+    FileItem,
+    QuerysetItem,
 )
 
 
-class TextItemSerializer(serializers.Serializer):
+class QuerysetItemSerializer(serializers.ModelSerializer):
     base_html_block = serializers.PrimaryKeyRelatedField(
         queryset=BaseHTMLBlock.objects.all(),
         required=False,
     ) 
+    django_class = serializers.CharField(required=False, allow_null=True)  
 
-    value = serializers.CharField(required=False)
+    class Meta:
+        model = QuerysetItem
+        fields = [
+            'base_html_block',
+            'name',
+            'slug',
+            'django_class',
+        ]
+
+    def create(self, validated_data):
+        app_model_string = validated_data.pop('django_class', {})
+        if app_model_string:
+            try:
+                content_type: ContentType = ContentType.objects.get_by_natural_key(*app_model_string.split('.'))
+            except ContentType.DoesNotExist:
+                content_type = None
+        validated_data['django_class'] = content_type
+        queryset_item: FileItem = super().create(validated_data)
+
+        return queryset_item
+
+
+class TextItemSerializer(serializers.ModelSerializer):
+    base_html_block = serializers.PrimaryKeyRelatedField(
+        queryset=BaseHTMLBlock.objects.all(),
+        required=False,
+    ) 
 
     class Meta:
         model = TextItem
@@ -23,58 +60,62 @@ class TextItemSerializer(serializers.Serializer):
             'base_html_block',
             'name',
             'slug',
-            'description',
             'value',
         ]
 
 
-class ContextItemSerializer(serializers.Serializer):
-    name = serializers.CharField(required=False)
-    slug = serializers.CharField(required=False)
-    description = serializers.CharField(required=False)
-    base_html_block = serializers.PrimaryKeyRelatedField(
-        queryset=BaseHTMLBlock.objects.all(),
-        required=False,
-    ) 
+class FileItemSerializer(serializers.ModelSerializer):
+    file = serializers.CharField(required=False, allow_null=True)  
 
-    value = serializers.CharField(required=False)
+    class Meta:
+        model = FileItem
+        fields = [
+            'base_html_block',
+            'name',
+            'slug',
+            'file',
+        ]
 
     def create(self, validated_data):
-        context_item = None
-        value = validated_data.get('value', None)
-        if value:
-            serializer = TextItemSerializer(data=validated_data)    
-            if serializer.is_valid():
-                context_item = serializer.save()
+        str_file = validated_data.pop('file', {})
+        file_item: FileItem = super().create(validated_data)
 
-        return context_item
+        if str_file:
+            b_file = base64.b64decode(str_file)
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            temp_file.write(b_file)
+            content_file = ContentFile(b_file)
+            file_name = f"{validated_data.get('slug')}.txt"
+            in_memory_file = InMemoryUploadedFile(content_file, None, file_name, "text", content_file.tell(), None)
+            file_item.default_file.save(file_name, in_memory_file)
+            file_item.save()            
+
+        return file_item
     
 
-# class NestedBaseHTMLBlockSerializer(serializers.ModelSerializer):
-#     base_html_block = serializers.PrimaryKeyRelatedField(
-#         queryset=BaseHTMLBlock.objects.all(),
-#         required=False,
-#     )  
+class ContextItemSerializer(serializers.Serializer):
+    name = serializers.CharField(required=False) 
+    slug = serializers.CharField(required=False) 
+    value = serializers.CharField(required=False, allow_blank=True, allow_null=True) 
+    file = serializers.CharField(required=False, allow_blank=True, allow_null=True) 
+    is_file = serializers.BooleanField(required=False, allow_null=True) 
+    django_class = serializers.CharField(required=False, allow_null=True) 
 
-#     class Meta:
-#         model = NestedBaseHTMLBlock
-#         fields = [
-#             'slug',
-#             'description',
-#             'value',
-#             'base_html_block',
-#         ]
+    class Meta:
+        fields = [
+            'name',
+            'slug',
+            'value',
+            'file',
+            'is_file',
+            'django_class',
+        ]
 
-#     def create(self, validated_data):
-#         validated_data['is_generated'] = True
-#         return super().create(validated_data)
-    
 
-class BaseHTMLBlockSerializer(serializers.ModelSerializer):
-    template_name = serializers.CharField(required=False)
-    template_body = serializers.CharField(required=False)   
-    context_items = ContextItemSerializer(many=True)
-    # nested_blocks = NestedBaseHTMLBlockSerializer(many=True)
+
+class BaseHTMLBlockSerializer(serializers.ModelSerializer): 
+    template_body = serializers.CharField(required=False, allow_null=True, default='')   
+    context_items = ContextItemSerializer(many=True, required=False)
 
     class Meta:
         model = BaseHTMLBlock
@@ -82,14 +123,11 @@ class BaseHTMLBlockSerializer(serializers.ModelSerializer):
             'name',
             'slug',
             'base_blocks_kit',
-            'template_name',
             'template_body',
             'context_items',
-            # 'nested_blocks',
         ]
 
     def create(self, validated_data):
-        validated_data['template_name'] = ''
 
         context_items_data = validated_data.pop('context_items', {})
         nested_blocks_data = validated_data.pop('nested_blocks', {})
@@ -100,31 +138,33 @@ class BaseHTMLBlockSerializer(serializers.ModelSerializer):
         base_html_block.set_html_to_file(template_body)
 
         if base_html_block:
-            if context_items_data:
+            for context_item_data in context_items_data:
+                serializer = None
+                context_item_data['base_html_block'] = base_html_block.id
 
-                for context_item_data in context_items_data:
-                    context_item_data['base_html_block'] = base_html_block.id
+                is_file = context_item_data.pop('is_file', False)
+                if is_file:
+                    serializer = FileItemSerializer(data=context_item_data)
 
-                serializer = ContextItemSerializer(data=context_items_data, many=True)
+                elif context_item_data.get('django_class'):
+                    serializer = QuerysetItemSerializer(data=context_item_data)
 
-                if serializer.is_valid():
-                    context_items = serializer.save()
+                else:
+                    serializer = TextItemSerializer(data=context_item_data)
 
-            # if nested_blocks_data:
-
-            #     for nested_block_data in nested_blocks_data:
-            #         nested_block_data['base_html_block'] = base_html_block.id
-
-            #     serializer = NestedBaseHTMLBlockSerializer(data=nested_blocks_data, many=True)
-
-            #     if serializer.is_valid():
-            #         context_items = serializer.save()
+                if serializer:
+                    if serializer.is_valid():
+                        context_item = serializer.save()
+                    else:
+                        print('serializer.errors', serializer.errors)
+                else:
+                    print('not serializer')
 
         return base_html_block
 
 
 class BaseBlocksKitSerializer(serializers.ModelSerializer):
-    base_html_blocks = BaseHTMLBlockSerializer(many=True)
+    base_html_blocks = BaseHTMLBlockSerializer(many=True, required=False)
 
     class Meta:
         model = BaseBlocksKit
@@ -148,6 +188,8 @@ class BaseBlocksKitSerializer(serializers.ModelSerializer):
 
             if serializer.is_valid():
                 html_blocks = serializer.save()
+            else:
+                print('serializer.errors', serializer.errors)
 
         return base_blocks_kit
 
