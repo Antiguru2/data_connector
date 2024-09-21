@@ -1,8 +1,10 @@
 import tempfile
 import requests
 
+from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet
 
 from django.db import models
 from django.apps import apps
@@ -23,23 +25,24 @@ from django.views.decorators.http import require_POST
 # )
 from html_constructor.models import (
     BaseHTMLBlock,
-    Group,
+    BaseBlocksKit,
 )
 from data_connector.serializers import (
     DefaultSerializer,
     get_serializer_class_by_lower_name,
 )
+from data_connector.export_serializers.base_blocks_kit_serializers import (
+    BaseBlocksKitSerializer,
+)
+
 
 class BaseHTMLBlockUpdate(APIView):
 
     def get(self, request):
-        print('BaseHTMLBlockUpdate')
         serializer_lower_name = request.GET.get('serializer_lower_name')
-        print('serializer_lower_name', serializer_lower_name)
         SomeSerializerClass = None
         if serializer_lower_name:
             for serializer_class in DefaultSerializer.__subclasses__():
-                print('serializer_class.__name__.lower()', serializer_class.__name__.lower())
                 if serializer_class.__name__.lower() == serializer_lower_name:
                     SomeSerializerClass = serializer_class
 
@@ -92,18 +95,17 @@ class BaseHTMLBlockUpdate(APIView):
         base_html_blocks = request_data.get('base_html_blocks')
 
         if group_slug and base_html_blocks:
-            group, created = Group.objects.get_or_create(slug=group_slug)
+            base_blocks_kit, created = BaseBlocksKit.objects.get_or_create(slug=group_slug)
 
             for base_html_block in base_html_blocks:
                 context_items_data = base_html_block.get('context_items_data')
                 base_html_block_data = base_html_block.get('data')
+                base_html_block['base_blocks_kit'] = base_blocks_kit
 
                 template_body = base_html_block_data.pop('template_body')
 
                 new_base_html_block = BaseHTMLBlock.objects.create(**base_html_block_data)
                 new_base_html_block.set_html_to_file(template_body)
-
-                group.base_html_blocks.add(new_base_html_block)
                 
                 for context_item in context_items_data:
                     context_item_class_name = context_item.get('context_item_class_name')
@@ -142,40 +144,39 @@ class BaseHTMLBlockUpdate(APIView):
             return Response({}, status=400)
 
 
-# def set_models_data(request):
-#     status = 'error'
-#     request_data = request.POST
-#     response_data = {}
+from rest_framework import permissions
+
+class AllowAnyCreate(permissions.BasePermission):
+    """
+    Разрешает создание объектов любому пользователю,
+    но сохраняет стандартные проверки для других действий.
+    """
+
+    def has_permission(self, request, view):
+        # Разрешить создание (POST) любому пользователю
+        if request.method == 'POST':
+            return True
+        # Для остальных методов используем стандартные проверки
+        return permissions.DjangoModelPermissionsOrAnonReadOnly().has_permission(request, view)
+
+
+class BaseBlocksKitModelViewSet(ModelViewSet):
+    queryset = BaseBlocksKit.objects.all()
+    serializer_class = BaseBlocksKitSerializer
+    # permission_classes = [AllowAnyCreate]
+    permission_classes = [permissions.DjangoModelPermissionsOrAnonReadOnly]
+
+    # def get(self, request, *args, **kwargs):
+    #     return Response({"message": "ok"}, status=status.HTTP_200_OK)
+
+    def create(self, request, *args, **kwargs):
+        serializer: BaseBlocksKitSerializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
-#     return JsonResponse({
-#         'status': status,
-#         'response_data': response_data,
-#     })
 
-
-# @csrf_exempt
-# @require_POST
-# def create_lead(request):
-#     """
-#     """
-#     request_data = request.POST
-#     print(request_data)
-#     status = 'error'
-#     response_data = {}
-
-#     lead_form = modelform_factory(
-#         Lead, 
-#         fields='__all__',
-#     )(request_data)
-
-#     if lead_form.is_valid():
-#         lead = lead_form.save()
-#         print('lead', lead)
-#         status = 'ok'
-
-#     response_data['status'] = status
-#     redirect_url = request.META.get('HTTP_REFERER')
-#     return redirect(redirect_url)
 
 
 
