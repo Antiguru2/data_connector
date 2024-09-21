@@ -163,14 +163,13 @@ class AllowAnyCreate(permissions.BasePermission):
 class BaseBlocksKitModelViewSet(ModelViewSet):
     queryset = BaseBlocksKit.objects.all()
     serializer_class = BaseBlocksKitSerializer
-    permission_classes = [AllowAnyCreate]
+    # permission_classes = [AllowAnyCreate]
+    permission_classes = [permissions.DjangoModelPermissionsOrAnonReadOnly]
 
     # def get(self, request, *args, **kwargs):
     #     return Response({"message": "ok"}, status=status.HTTP_200_OK)
 
     def create(self, request, *args, **kwargs):
-        # print('BaseBlocksKitModelViewSet create')
-        # print('request.data', request.data)
         serializer: BaseBlocksKitSerializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -178,40 +177,6 @@ class BaseBlocksKitModelViewSet(ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
 
-# def set_models_data(request):
-#     status = 'error'
-#     request_data = request.POST
-#     response_data = {}
-    
-#     return JsonResponse({
-#         'status': status,
-#         'response_data': response_data,
-#     })
-
-
-# @csrf_exempt
-# @require_POST
-# def create_lead(request):
-#     """
-#     """
-#     request_data = request.POST
-#     print(request_data)
-#     status = 'error'
-#     response_data = {}
-
-#     lead_form = modelform_factory(
-#         Lead, 
-#         fields='__all__',
-#     )(request_data)
-
-#     if lead_form.is_valid():
-#         lead = lead_form.save()
-#         print('lead', lead)
-#         status = 'ok'
-
-#     response_data['status'] = status
-#     redirect_url = request.META.get('HTTP_REFERER')
-#     return redirect(redirect_url)
 
 
 

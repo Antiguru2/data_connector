@@ -13,8 +13,8 @@ router.register(r'api/base_blocks_kit_update', api.BaseBlocksKitModelViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
-    path(
-        'base_html_block_update/', 
-        api.BaseHTMLBlockUpdate.as_view(),
-    ),
+    # path(
+    #     'base_html_block_update/', 
+    #     api.BaseHTMLBlockUpdate.as_view(),
+    # ),
 ]
