@@ -1,10 +1,14 @@
 # import tempfile
 # import requests
 
-# from rest_framework import status
+from rest_framework import (
+    status,
+    permissions,
+)
 # from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework.viewsets import ModelViewSet
+from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.viewsets import ReadOnlyModelViewSet
 
 # from django.db import models
 # from django.apps import apps
@@ -20,9 +24,9 @@
 # #     modelform_factory, 
 # # )
 
-# # from marketing.models import (
-# #     Lead
-# # )
+from main.mixins import (
+    ViewSetAndFilterByGetParamsMixin,
+)
 # from html_constructor.models import (
 #     BaseHTMLBlock,
 #     BaseBlocksKit,
@@ -177,6 +181,100 @@
 #         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
 
+from talent_finder.models import Project, Candidate, AnalysisStatistics
+from data_connector.export_serializers.neuro_screener_serializers import (
+    ProjectExportSerializer, 
+    AnalysisStatisticsExportSerializer,
+)
+from data_connector.import_serializers.neuro_screener_serializers import CandidateImportSerializer
 
 
+class ProjectsModelViewSet(ModelViewSet):
+    queryset = Project.objects.all()
+    serializer_class = ProjectExportSerializer
+    # permission_classes = [permissions.DjangoModelPermissionsOrAnonReadOnly]
 
+    def list(self, request, *args, **kwargs):
+        queryset = Project.objects.none()
+        if request.user:
+            queryset = self.get_queryset().filter(
+                created_by=request.user
+            )
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    def create(self, request, *args, **kwargs):
+        print('ProjectsModelViewSet.create()')
+        print('request.data', request.data)
+        serializer: ProjectExportSerializer = self.get_serializer(data=request.data)
+        if not request.user.is_authenticated:
+            return Response({"message": "User not found"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        
+        serializer.initial_data['created_by'] = request.user.id
+        print('serializer.initial_data', serializer.initial_data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        print('serializer.data', serializer.data)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    def update(self, request, *args, **kwargs):
+        print('ProjectsModelViewSet.update()')
+        print('request.data', request.data)
+        return super().update(request, *args, **kwargs)
+    
+
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.response import Response
+
+class CustomPageNumberPagination(PageNumberPagination):
+    page_size = 10  # Установить размер страницы по умолчанию
+    page_size_query_param = 'page_size'  # Параметр для указания размера страницы
+    max_page_size = 100  # Максимально допустимый размер страницы
+
+    def get_paginated_response(self, data):
+        try:
+            next = self.page.next_page_number()
+        except:
+            next = None
+
+        try:
+            previous = self.page.previous_page_number()
+        except:
+            previous = None
+
+        # Измените здесь, чтобы настроить, какие данные будут возвращены
+        return Response({
+            'count': self.page.paginator.count,  # Общее количество объектов
+            'next': next,  # URL следующей страницы
+            'previous': previous,  # URL предыдущей страницы
+            'results': data,  # Отфильтрованные результаты
+            # Можете добавить дополнительные поля по своему усмотрению
+            'page_size': self.page_size,
+            'current_page': self.page.number,
+        })
+
+
+class CandidateModelViewSet(
+    ViewSetAndFilterByGetParamsMixin,
+    ModelViewSet,
+):
+    queryset = Candidate.objects.all().order_by('is_viewed')
+    serializer_class = CandidateImportSerializer
+    pagination_class = CustomPageNumberPagination
+
+
+class AnalysisStatisticsModelViewSet(
+    ViewSetAndFilterByGetParamsMixin,
+    ModelViewSet,
+):
+    queryset = AnalysisStatistics.objects.all()
+    serializer_class = AnalysisStatisticsExportSerializer
+    pagination_class = CustomPageNumberPagination
