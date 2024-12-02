@@ -7,4 +7,4 @@ class DataConnectorConfig(AppConfig):
     verbose_name = 'Коннектор данных'
 
     def ready(self) -> None:
-        import html_constructor.signals
+        import data_connector.signals
