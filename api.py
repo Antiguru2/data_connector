@@ -26,13 +26,19 @@ from django.views.decorators.http import require_POST
 from html_constructor.models import (
     BaseHTMLBlock,
     BaseBlocksKit,
+    Group,
 )
 from data_connector.serializers import (
     DefaultSerializer,
     get_serializer_class_by_lower_name,
 )
-from data_connector.export_serializers.base_blocks_kit_serializers import (
-    BaseBlocksKitSerializer,
+# from data_connector.export_serializers.base_blocks_kit_serializers import (
+#     BaseBlocksKitSerializer,
+#     BaseHTMLBlockSerializer,
+# )
+from data_connector.export_serializers.base_store__base_html_blocks_serializers import (
+    BaseHTMLBlockSerializer,
+    GroupSerializer,
 )
 
 
@@ -63,8 +69,7 @@ class BaseHTMLBlockUpdate(APIView):
                         "data": {
                             "slug": str,
                             "name": str,
-                            "short_description": str,
-                            "full_description": str,
+                            "description": str,
                             "order": str,
                             "template_body": str,
                             ...
@@ -75,8 +80,7 @@ class BaseHTMLBlockUpdate(APIView):
                                 "data": {
                                     "slug": str,
                                     "name": str,
-                                    "short_description": str,
-                                    "full_description": str,
+                                    "description": str,
                                     "order": str,
                                     ...
                                 },
@@ -160,9 +164,37 @@ class AllowAnyCreate(permissions.BasePermission):
         return permissions.DjangoModelPermissionsOrAnonReadOnly().has_permission(request, view)
 
 
+class GroupsModelViewSet(ModelViewSet):
+    queryset = Group.objects.all()
+    serializer_class = GroupSerializer
+    permission_classes = [AllowAnyCreate]
+    # permission_classes = [permissions.DjangoModelPermissionsOrAnonReadOnly]
+
+    def create(self, request, *args, **kwargs):
+        serializer: GroupSerializer = self.get_serializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class BaseHTMLBlockModelViewSet(ModelViewSet):
+    queryset = BaseHTMLBlock.objects.all()
+    serializer_class = BaseHTMLBlockSerializer
+    permission_classes = [AllowAnyCreate]
+    # permission_classes = [permissions.DjangoModelPermissionsOrAnonReadOnly]
+
+    def create(self, request, *args, **kwargs):
+        serializer: BaseHTMLBlockSerializer = self.get_serializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+
 class BaseBlocksKitModelViewSet(ModelViewSet):
     queryset = BaseBlocksKit.objects.all()
-    serializer_class = BaseBlocksKitSerializer
+    # serializer_class = BaseBlocksKitSerializer
     # permission_classes = [AllowAnyCreate]
     permission_classes = [permissions.DjangoModelPermissionsOrAnonReadOnly]
 

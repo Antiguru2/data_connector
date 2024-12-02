@@ -8,7 +8,9 @@ from . import views
 from . import api
 
 router = routers.DefaultRouter()
-router.register(r'api/base_blocks_kit_update', api.BaseBlocksKitModelViewSet)
+router.register(r'groups', api.GroupsModelViewSet)
+router.register(r'base_blocks', api.BaseHTMLBlockModelViewSet)
+# router.register(r'base_blocks_kit_update', api.BaseBlocksKitModelViewSet)
 
 
 urlpatterns = [
