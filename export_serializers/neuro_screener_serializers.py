@@ -15,6 +15,7 @@ from talent_finder.models import (
     SearchRow,
     SearchCriteria,
     AnalysisStatistics,
+    Prompt,
 )
 
 User = get_user_model()
@@ -62,6 +63,8 @@ class SearchCriteriaSerializer(serializers.ModelSerializer):
             'id', 
             'must_have', 
             'nice_to_have',
+            'additional',  
+            'areas',
             'project',
         ]
 
@@ -74,9 +77,11 @@ class ProjectExportSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(),
     )    
+    created_at = serializers.DateTimeField(read_only=True)
+    last_modified = serializers.DateTimeField(read_only=True)
+    
     search_rows = SearchRowSerializer(many=True)
     search_criteria = SearchCriteriaSerializer(many=True)
-    created_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Project
@@ -86,10 +91,12 @@ class ProjectExportSerializer(serializers.ModelSerializer):
             'name',
             'created_by',
             'created_at',
+            'last_modified',
             'description',
 
             'search_rows',
             'search_criteria',
+            'json_prompts',
         ]
 
     def create(self, validated_data):
@@ -112,7 +119,6 @@ class ProjectExportSerializer(serializers.ModelSerializer):
         return project
     
     def update(self, instance, validated_data):
-        print('validated_data', validated_data)
         search_rows_data = validated_data.pop('search_rows', [])
         search_criteria_data = validated_data.pop('search_criteria', [])
         
@@ -120,7 +126,6 @@ class ProjectExportSerializer(serializers.ModelSerializer):
 
         # Обновление existing search rows
         for search_row_data in search_rows_data:
-            print('search_row_data', search_row_data)
             # Если в данных есть ID, то это существующая запись, которую нужно обновить
             if 'id' in search_row_data:
                 search_row = SearchRow.objects.get(id=search_row_data['id'], project=project)
@@ -137,7 +142,6 @@ class ProjectExportSerializer(serializers.ModelSerializer):
         
         # Обновление existing search criteria
         for search_criterion_data in search_criteria_data:
-            print('search_criterion_data', search_criterion_data)
             search_criterion = project.search_criteria.first()
             if search_criterion:
                 for attr, value in search_criterion_data.items():
@@ -185,6 +189,7 @@ class AnalysisStatisticsExportSerializer(serializers.ModelSerializer):
     average_processing_time = serializers.SerializerMethodField()
     error_count = serializers.SerializerMethodField()
     completion_percentage = serializers.SerializerMethodField()
+    category_distribution = serializers.SerializerMethodField()
 
     class Meta:
         model = AnalysisStatistics
@@ -200,6 +205,7 @@ class AnalysisStatisticsExportSerializer(serializers.ModelSerializer):
             'average_processing_time',
             'error_count',
             'completion_percentage',
+            'category_distribution',
         ]
 
     def get_total_resumes(self, obj: AnalysisStatistics):
@@ -212,7 +218,8 @@ class AnalysisStatisticsExportSerializer(serializers.ModelSerializer):
         return obj.get_pending_resumes()
     
     def get_last_updated(self, obj: AnalysisStatistics):
-        return obj.get_last_updated()
+        last_updated = obj.get_last_updated()
+        return last_updated.strftime('%H:%M %d.%m.%Y') if last_updated else '-'
     
     def get_average_processing_time(self, obj: AnalysisStatistics):
         return obj.get_average_processing_time()
@@ -222,3 +229,25 @@ class AnalysisStatisticsExportSerializer(serializers.ModelSerializer):
     
     def get_completion_percentage(self, obj: AnalysisStatistics):
         return obj.get_completion_percentage()
+
+    def get_category_distribution(self, obj: AnalysisStatistics):
+        return obj.get_category_distribution()
+    
+
+class PromptsSerializer(serializers.ModelSerializer):
+    project = serializers.PrimaryKeyRelatedField(
+        queryset=Project.objects.all(),
+        required=False,
+    )  
+
+    class Meta:
+        model = Prompt
+        fields = [
+            'id',
+
+            'project',
+
+            'description',
+            'system',
+            'user',
+        ]

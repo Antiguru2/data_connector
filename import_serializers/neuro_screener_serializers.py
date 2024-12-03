@@ -37,3 +37,14 @@ class CandidateImportSerializer(serializers.ModelSerializer):
             'interview_date',
             'salary',
         ]
+
+
+# class ProjectImportSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Project
+#         fields = [
+#             'id',
+#             'status',
+#             'description',
+#             'json_prompts',
+#         ]

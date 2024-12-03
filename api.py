@@ -6,7 +6,9 @@ from rest_framework import (
     permissions,
 )
 # from rest_framework.views import APIView
+from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.generics import GenericAPIView
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
@@ -181,18 +183,38 @@ from main.mixins import (
 #         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
 
-from talent_finder.models import Project, Candidate, AnalysisStatistics
+from talent_finder.models import (
+    SearchRow,
+    SearchCriteria,
+    Project, 
+    Candidate, 
+    AnalysisStatistics,
+    Prompt,
+)
 from data_connector.export_serializers.neuro_screener_serializers import (
-    ProjectExportSerializer, 
+    ProjectExportSerializer,
+    SearchCriteriaSerializer, 
     AnalysisStatisticsExportSerializer,
+    PromptsSerializer,
+    SearchRowSerializer,
 )
 from data_connector.import_serializers.neuro_screener_serializers import CandidateImportSerializer
 
+
+class IsStaffPermission(permissions.BasePermission):
+    """
+    Разрешение, которое позволяет доступ только пользователям с is_staff=True.
+    """
+
+    def has_permission(self, request, view):
+        return request.user and request.user.is_staff
+    
 
 class ProjectsModelViewSet(ModelViewSet):
     queryset = Project.objects.all()
     serializer_class = ProjectExportSerializer
     # permission_classes = [permissions.DjangoModelPermissionsOrAnonReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsStaffPermission]
 
     def list(self, request, *args, **kwargs):
         queryset = Project.objects.none()
@@ -210,25 +232,19 @@ class ProjectsModelViewSet(ModelViewSet):
         return Response(serializer.data)
     
     def create(self, request, *args, **kwargs):
-        print('ProjectsModelViewSet.create()')
-        print('request.data', request.data)
         serializer: ProjectExportSerializer = self.get_serializer(data=request.data)
         if not request.user.is_authenticated:
             return Response({"message": "User not found"}, status=status.HTTP_400_BAD_REQUEST)
         
         
         serializer.initial_data['created_by'] = request.user.id
-        print('serializer.initial_data', serializer.initial_data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        print('serializer.data', serializer.data)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
-    def update(self, request, *args, **kwargs):
-        print('ProjectsModelViewSet.update()')
-        print('request.data', request.data)
-        return super().update(request, *args, **kwargs)
+    # def update(self, request, *args, **kwargs):
+    #     return super().update(request, *args, **kwargs)
     
 
 from rest_framework.pagination import PageNumberPagination
@@ -269,6 +285,7 @@ class CandidateModelViewSet(
     queryset = Candidate.objects.all().order_by('is_viewed')
     serializer_class = CandidateImportSerializer
     pagination_class = CustomPageNumberPagination
+    permission_classes = [permissions.IsAuthenticated, IsStaffPermission]
 
 
 class AnalysisStatisticsModelViewSet(
@@ -278,3 +295,42 @@ class AnalysisStatisticsModelViewSet(
     queryset = AnalysisStatistics.objects.all()
     serializer_class = AnalysisStatisticsExportSerializer
     pagination_class = CustomPageNumberPagination
+    permission_classes = [permissions.IsAuthenticated, IsStaffPermission]
+
+    @action(detail=False, methods=['get'], url_path='last')
+    def retrieve_last(self, request):
+        project_id = request.query_params.get('project_id')
+        last_analysis = self.queryset.filter(project_id=project_id).order_by('created_at').last()
+        serializer = self.get_serializer(last_analysis)
+        return Response(serializer.data)
+    
+
+class SearchCriteriaModelViewSet(
+    ViewSetAndFilterByGetParamsMixin,
+    ModelViewSet,
+):
+    queryset = SearchCriteria.objects.all()
+    serializer_class = SearchCriteriaSerializer
+    pagination_class = CustomPageNumberPagination
+    permission_classes = [permissions.IsAuthenticated, IsStaffPermission]
+
+
+class SearchRowModelViewSet(
+    ViewSetAndFilterByGetParamsMixin,
+    ModelViewSet,
+):
+    queryset = SearchRow.objects.all()
+    serializer_class = SearchRowSerializer
+    pagination_class = CustomPageNumberPagination
+    permission_classes = [permissions.IsAuthenticated, IsStaffPermission]
+
+
+
+class PromptsModelViewSet(
+    ViewSetAndFilterByGetParamsMixin,
+    ModelViewSet,
+):
+    queryset = Prompt.objects.all()
+    serializer_class = PromptsSerializer
+    pagination_class = CustomPageNumberPagination
+    permission_classes = [permissions.IsAuthenticated, IsStaffPermission]
