@@ -1,0 +1,3 @@
+[submodule "submodules/super_object"]
+	path = submodules/super_object
+	url = https://github.com/Antiguru2/super_object.git
