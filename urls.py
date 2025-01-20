@@ -14,4 +14,24 @@ except ImportError:
 urlpatterns = [
     path('api/', include(router.urls)),
 
+    # path(
+    #     'super-api/<str:model_id>/',
+    #     api.sa
+    # ),
+    path(
+        'super-api/<str:natural_key>/',
+        api.SuperApiView.as_view(),
+    ),
+    path(
+        'super-api/<str:natural_key>/<int:obj_id>/',
+        api.SuperApiView.as_view(),
+    ),
+    path(
+        'super-api/<str:natural_key>/<str:serializer_name>/',
+        api.SuperApiView.as_view(),
+    ),
+    path(
+        'super-api/<str:natural_key>/<str:serializer_name>/<int:obj_id>/',
+        api.SuperApiView.as_view(),
+    ),
 ]
