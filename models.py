@@ -400,7 +400,7 @@ class Transmitter(models.Model):
         verbose_name="ID модели",
     )
     filter = models.JSONField(
-        default='',
+        default=dict,
         verbose_name="Фильтр(kwargs)",
     )
     remote_site = models.ForeignKey(
