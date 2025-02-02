@@ -19,11 +19,16 @@ from .models import (
     FieldHandler,
 )
 
+try:
+    from .local_settings import MAIN_SITE_DOMAIN
+except:
+    MAIN_SITE_DOMAIN = ''
+
 
 main_site_dict = {
     'main': True,
     'name': 'base_store',
-    'domain': 'basestore.site',
+    'domain': 'basestore.online',
 }
 
 @receiver(post_migrate)
