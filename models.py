@@ -169,6 +169,12 @@ class SerializerField(SlugNamedAbstractModel):
         verbose_name='Сериализатор',
         related_name='serializer_fields',
     )
+    alt_key = models.CharField(
+        max_length=255,
+        null=True, blank=True,
+        verbose_name='Альтернативный ключ',
+        help_text='С таким ключем будут возвращены данные.'
+    )
     is_active = models.BooleanField(
         default=True,
         verbose_name='Активен',
@@ -330,7 +336,11 @@ class DataConnector(
                 if not handler:
                     fields_data[serializer_field.slug] = 'Oбработчик не настроен'
                 else:
-                    fields_data[serializer_field.slug] = handler.get_value(obj, serializer_field)
+                    serializer_field_slug = serializer_field.slug
+                    if serializer_field.alt_key:
+                        serializer_field_slug = serializer_field.alt_key
+                        
+                    fields_data[serializer_field_slug] = handler.get_value(obj, serializer_field)
 
             if fields_data:
                 serializer_data.append(fields_data)

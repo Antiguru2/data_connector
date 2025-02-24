@@ -380,7 +380,11 @@
 
 import json
 
+from urllib.parse import unquote
+
 from django.views import View
+from django.http.request import QueryDict
+from django.core.exceptions import FieldError
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.contenttypes.models import ContentType
 
@@ -418,11 +422,13 @@ class SuperApiView(APIView):
         
         return some_model.objects.filter(id=obj_id).first()
     
-    def get_queryset(self, some_model, obj_id=None, filter=None):
+    def get_queryset(self, some_model, obj_id=None, get_params={}):
+        print('SuperApiView get_queryset')
+        print('get_params', get_params)
         if obj_id:
             return some_model.objects.filter(id=obj_id)
-        elif filter:
-            return some_model.objects.filter(**filter)
+        elif get_params:
+            return some_model.objects.filter(**self.get_django_filter(get_params))
         else:
             return some_model.objects.all()
         
@@ -435,11 +441,53 @@ class SuperApiView(APIView):
             request_data = json.loads(request.body)
 
         return request_data
+
+    def get_django_filter(self, get_params: QueryDict) -> dict:
+        '''
+            Возвращает queryset по переданым get_params
+        '''
+        django_filter = {}
+
+        for get_param_slug, get_param_value in get_params.items():
+
+            print('get_param_value', get_param_value)
+
+            # Пробразуем спецефичные для QueryDict значения в валидные значения для objects.filter()
+            if get_param_value in ['True', 'true', 'False', 'false']:
+                if get_param_value in ['True', 'true']:
+                    get_param_value = True
+                else:
+                    get_param_value = False
+            else:
+                print('get_param_value', get_param_value)
+                if ',' in get_param_value:
+                    get_params_value = get_param_value.split(',')
+                    get_param_value = []
+                    for get_params_value_item in get_params_value:
+                        try:
+                            get_param_value.append(int(get_params_value_item))
+                        except ValueError:
+                            get_param_value.append(unquote(get_params_value_item))
+
+            if type(get_param_value) != list:
+                try:
+                    get_param_value = int(get_param_value)
+                except ValueError:
+                    pass
+
+            try:
+                django_filter[get_param_slug] = get_param_value
+            except AttributeError:
+                pass
+            except FieldError:
+                pass
+        print('django_filter', django_filter)
+        return django_filter
         
-    def get(self, request, natural_key, serializer_name=None, obj_id=None, *args, **kwargs):
-        # print('SuperApiView get')
+    def get(self, request, natural_key, serializer_name=None, obj_id=None):
+        print('SuperApiView get')
         # print('args', args)
-        # print('kwargs', kwargs)
+        print('GET', dict(request.GET))
 
         # print('natural_key', natural_key)
         # print('serializer_name', serializer_name)
@@ -458,7 +506,7 @@ class SuperApiView(APIView):
             if not obj:
                 return Response({"status": "error", "message": "Нет объекта с таким id"}, status=status.HTTP_404_NOT_FOUND)
             
-        queryset = self.get_queryset(some_model, obj_id, kwargs)
+        queryset = self.get_queryset(some_model, obj_id, request.GET)
 
         if not queryset:
             return Response({"status": "error", "message": "Нет queryset"}, status=status.HTTP_404_NOT_FOUND)
