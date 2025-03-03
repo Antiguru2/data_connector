@@ -1,6 +1,8 @@
 [submodule "submodules/super_object"]
 	path = submodules/super_object
 	url = https://github.com/Antiguru2/super_object.git
+	branch = main
 [submodule "submodules/base_content_objects"]
 	path = submodules/base_content_objects
 	url = https://github.com/Antiguru2/base_content_objects.git
+	branch = main
