@@ -115,6 +115,50 @@ class FieldHandler(SlugNamedAbstractModel):
 
         print('value', value)   
         return value
+    
+    def get_transform_data(self, value, serializer_field: models.Model):
+        print('get_transform_data')
+        serializer_field_slug = serializer_field.slug
+        transform_data = value
+
+        if self.slug == 'ForeignKey':
+            try:
+                rel_object = getattr(obj, serializer_field_slug)
+                if rel_object:
+                    value = rel_object.id
+                else:
+                    value = None
+            except Exception as e:
+                print(e)
+                value = f'Ошибка: {e}'   
+
+        print('transform_data', transform_data)   
+        return transform_data
+    
+
+class IncomingFieldHandler(SlugNamedAbstractModel):
+    """
+        Класс, инструкция для обработки поля.
+    """
+
+    method = models.CharField(
+        max_length=255,
+        null=True, blank=True,
+    )
+
+    class Meta:
+        verbose_name = 'Обработчик входящих данных'
+        verbose_name_plural = 'Обработчики входящих данных'
+
+    @classmethod
+    def get_default_handler(cls):
+        default_handler, created = cls.objects.get_or_create(slug='default')
+        return default_handler
+
+    def get_value(self, obj, serializer_field: models.Model):
+        serializer_field_slug = serializer_field.slug
+        value = 'Не найдено' 
+        return value
 
 
 class SerializerField(SlugNamedAbstractModel):
@@ -160,7 +204,13 @@ class SerializerField(SlugNamedAbstractModel):
         FieldHandler, 
         on_delete=models.SET_NULL, 
         null=True, blank=True,
-        verbose_name='Обработчик'
+        verbose_name=FieldHandler._meta.verbose_name,
+    )
+    incoming_handler = models.ForeignKey(
+        IncomingFieldHandler, 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True,
+        verbose_name=IncomingFieldHandler._meta.verbose_name,
     )
     data_connector = models.ForeignKey(
         'DataConnector', 
@@ -211,7 +261,13 @@ class SerializerField(SlugNamedAbstractModel):
 
         return handler
     
+    def get_input_handler(self):
+        handler = self.handler
 
+        if not handler:
+            handler = FieldHandler.get_default_input_handler()
+
+        return handler
     
 
 class DataConnector(
@@ -261,7 +317,7 @@ class DataConnector(
     @classmethod
     def get_self_assembly(
         cls,
-        input_serializer_data: Optional[dict] = None,
+        data: Optional[dict] = None,
     ):
         self_assembly = None
         return self_assembly
@@ -271,25 +327,25 @@ class DataConnector(
     def get_serializer(
         cls,
         some_model: models.Model,
+        method: str = 'GET',
         serializer_name: Optional[str] = None, 
-        input_serializer_data: Optional[dict] = None
+        serializer_self_assembly_data: Optional[dict] = None
     ):    
         serializer = None
         print('some_model', some_model)
         print('some_model.__class__.__name__', some_model.__class__.__name__)
-        print('input_serializer_data', input_serializer_data)
-        if input_serializer_data:
-            serializer = cls.get_self_assembly(input_serializer_data)
+        print('serializer_self_assembly_data', serializer_self_assembly_data)
+        if serializer_self_assembly_data:
+            serializer = cls.get_self_assembly(serializer_self_assembly_data)
 
         else:
-            # TODO: нужно фильтровать активный ли сериализатор
             content_type = ContentType.objects.get_for_model(some_model)
-            print('content_type', content_type)
-            print('content_type.id', content_type.id)
+            # print('content_type', content_type)
+            # print('content_type.id', content_type.id)
             all_serializers = cls.objects.all()
-            print('all_serializers', all_serializers)
-            print('all_serializers ids', all_serializers.values_list('id', flat=True))
-            print('all_serializers content_types', all_serializers.values_list('content_type', flat=True))
+            # print('all_serializers', all_serializers)
+            # print('all_serializers ids', all_serializers.values_list('id', flat=True))
+            # print('all_serializers content_types', all_serializers.values_list('content_type', flat=True))
             
             serializers = all_serializers.filter(
                 content_type=content_type,
@@ -306,10 +362,17 @@ class DataConnector(
 
         return serializer
 
-    def set_data(self, request_data):
+    def set_data(self, request_data: dict, method: str):
+        print('set_data')
         comment = ''
         response_status = 200
         response_data = {}
+        try:
+            response_data = self.deserialize(request_data, method)
+        except Exception as error:
+            # print('set_data', queryset)
+            print('set_data', error)
+
         return comment, response_status, response_data
     
     def get_data(self, queryset):
@@ -317,7 +380,7 @@ class DataConnector(
         try:
             response_data = self.serialize(queryset)
         except Exception as error:
-            print('get_data', queryset)
+            # print('get_data', queryset)
             print('get_data', error)
 
         return response_data
@@ -346,6 +409,36 @@ class DataConnector(
                 serializer_data.append(fields_data)
 
         return serializer_data
+    
+    def deserialize(self, request_data, method: str):
+        """
+        Метод для десериализации данных модели.
+        """
+        some_model_class = self.content_type.model_class()
+        request_data_list = [request_data] if type(request_data) == dict else request_data
+        serializer_fields = self.serializer_fields.filter(is_active=True).all()
+        print('serializer_fields', serializer_fields.values_list('slug', flat=True))
+
+        error_data = {}
+        some_model = some_model_class()
+        print('request_data_list', request_data_list)
+        for request_data_dict in request_data_list:
+            print('request_data_dict', request_data_dict)
+            for field_name, field_value in request_data_dict.items():
+                if field_name == 'id':
+                    continue
+
+                print('field_name', field_name)
+                print('field_value', field_value)
+                try:
+                    serializer_field = serializer_fields.filter(slug=field_name).first()
+                    input_handler: FieldHandler = serializer_field.get_handler()
+                    setattr(some_model, field_name, input_handler.get_transform_data(field_value, serializer_field))
+                except Exception as error:
+                    print('DataConnector.deserialize() error', error)
+
+                some_model.save()
+        return request_data
 
 
 class RemoteSite(models.Model):
@@ -410,7 +503,7 @@ class Transmitter(models.Model):
         verbose_name="ID модели",
     )
     filter = models.JSONField(
-        default=dict,
+        default=dict, blank=True,
         verbose_name="Фильтр(kwargs)",
     )
     remote_site = models.ForeignKey(
@@ -478,9 +571,9 @@ class Transmitter(models.Model):
                 print('serializer_data', serializer_data)
                 print('heders', heders)
                 response = requests.post(
-                    f'https://{self.remote_site.domain}/data_connector/super-api/{self.serializer.content_type.model}/',
+                    f'https://{self.remote_site.domain}/data_connector/super-api/{self.serializer.content_type.app_label}__{self.serializer.content_type.model}/',
                     headers=heders,
-                    json=serializer_data,   
+                    json={'data': serializer_data},   
                 )
                 if response.status_code != 200:
                     TransmitterLog.objects.create(

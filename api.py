@@ -540,17 +540,22 @@ class SuperApiView(APIView):
         if not request_data:
             return Response({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
 
+        data = request_data.get('data')
+        if not data:
+            return Response({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
+
         some_model = self.get_some_model(natural_key)
         if not some_model:
             return Response({"message": "Нет модели с таким натуральным ключом"}, status=status.HTTP_404_NOT_FOUND)
 
 
-        input_serializer_data = request_data.get('input_serializer_data')
+        serializer_self_assembly_data = request_data.get('serializer_self_assembly_data')
         try:
             serializer = DataConnector.get_serializer(
                 some_model,
+                'POST',
                 serializer_name, 
-                input_serializer_data
+                serializer_self_assembly_data,
             )
         except:
             serializer = None
@@ -558,14 +563,14 @@ class SuperApiView(APIView):
         if not serializer:
             return Response({"message": "Сериализатор не найден"}, status=status.HTTP_404_NOT_FOUND)       
 
-        comment, response_status, response_data = serializer.set_data(request_data) 
+        comment, response_status, response_data = serializer.set_data(data, method='POST') 
 
         return Response(
             {
                 "message": comment,
-                "response_data": response_data,
+                "data": response_data,
             }, 
-            status=response_status
+            status=response_status,
         )
     
     def put(self, request, natural_key, obj_id=None):
