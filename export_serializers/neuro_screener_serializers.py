@@ -56,6 +56,8 @@ class SearchCriteriaSerializer(serializers.ModelSerializer):
         queryset=Project.objects.all(),
         required=False,
     )   
+    must_have = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    nice_to_have = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = SearchCriteria

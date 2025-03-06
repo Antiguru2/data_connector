@@ -8,3 +8,11 @@ router = routers.DefaultRouter()
 
 # for base_store_lendos
 # router.register(r'api/base_blocks_kit_update', api.BaseBlocksKitModelViewSet)
+
+# Для локальных вьюшек
+# try:
+#     from . import local_api
+#     router.register(r'search_rows', local_api.SearchRowModelViewSet)
+#     
+# except ImportError:
+#     pass
