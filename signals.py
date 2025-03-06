@@ -73,7 +73,10 @@ def create_serializer_fields(sender: DataConnector, instance: DataConnector, cre
             try:
                 if field_type == 'AutoField':
                     field_type = 'default'
-                handler = FieldHandler.objects.get(slug=field_type)
+                handler, created = FieldHandler.objects.get_or_create(
+                    name=field_type,
+                    slug=field_type,
+                )
             except:
                 handler = None           
 

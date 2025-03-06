@@ -496,8 +496,11 @@ class SuperApiView(APIView):
         if not some_model:
             return Response({"message": "Нет модели с таким натуральным ключом"}, status=status.HTTP_404_NOT_FOUND)
 
+        if type(request_data) == dict:
+            input_serializer_data = request_data.get('input_serializer_data')
+        else:
+            input_serializer_data = None
 
-        input_serializer_data = request_data.get('input_serializer_data')
         try:
             serializer = DataConnector.get_serializer(
                 some_model,

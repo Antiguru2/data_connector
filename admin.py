@@ -47,6 +47,35 @@ class DataConnectorAdmin(admin.ModelAdmin):
         'name',
         'slug',
     ]
+    fieldsets = [
+        (None, {
+            'fields': (
+                'name',
+                'slug',
+                'description',
+                'content_type',
+                'additional_buttons',
+            )
+        }),
+        ('Разрешения', {
+            'fields': (
+                'is_active',
+                ('is_allow_view',
+                'is_allow_edit',
+                'is_allow_delete',
+                'is_allow_create')
+            )
+        }),
+        ('Дополнительное', {
+            'fields': (
+                'order',
+                'created',
+                'modified',
+                'is_publish',
+            ),
+            "classes": ["wide", "collapse"],
+        }), 
+    ] 
     # fields = [
     #     'name',
     #     'slug',
@@ -61,6 +90,8 @@ class DataConnectorAdmin(admin.ModelAdmin):
     #     'content_type',
     # ]
     readonly_fields = [
+        'modified',
+        'created',
         'additional_buttons',
     ]
     save_as = True

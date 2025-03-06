@@ -31,6 +31,10 @@ class FieldHandler(SlugNamedAbstractModel):
         return default_handler
 
     def get_value(self, obj, serializer_field: models.Model):
+        # print('get_value============================')
+        # print('slug', serializer_field.slug)
+        # print('self.slug', self.slug)
+        # print('obj', obj)
         serializer_field_slug = serializer_field.slug
         value = 'Не найдено'
         if hasattr(obj, serializer_field_slug):
@@ -70,13 +74,18 @@ class FieldHandler(SlugNamedAbstractModel):
                         object_id=obj.id,
                     )                   
 
-                print('queryset', queryset)
-                value = serializer.get_data(queryset)
+                # print('queryset', queryset)
+                if not queryset or queryset == [None]:
+                    value = None
+                else:
+                    value = serializer.get_data(queryset)
             except Exception as e:
                 print(e)
                 value = f'Ошибка: {e}'
 
         elif self.slug == 'ForeignKey':
+            # print('ForeignKey')
+            # print('self.slug', self.slug)
             try:
                 rel_object = getattr(obj, serializer_field_slug)
                 if rel_object:
@@ -113,7 +122,7 @@ class FieldHandler(SlugNamedAbstractModel):
                 print(e)
                 value = f'Ошибка: {e}'           
 
-        print('value', value)   
+        # print('value', value)   
         return value
 
 
@@ -221,10 +230,28 @@ class DataConnector(
         null=True, blank=True,
     )
 
+    # Разрешения
     is_active = models.BooleanField(
         default=True,
         verbose_name='Активен',
     )
+    is_allow_view = models.BooleanField(
+        default=True,
+        verbose_name='Разрешить просмотр',
+    )
+    is_allow_edit = models.BooleanField(
+        default=False,
+        verbose_name='Разрешить редактирование',
+    )
+    is_allow_delete = models.BooleanField(
+        default=False,
+        verbose_name='Разрешить удаление',
+    )
+    is_allow_create = models.BooleanField(
+        default=False,
+        verbose_name='Разрешить создание',
+    )
+
 
     class Meta: 
         verbose_name = 'Сериализатор'
