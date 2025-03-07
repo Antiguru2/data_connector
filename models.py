@@ -631,17 +631,19 @@ class Transmitter(models.Model):
 
             if self.action == 'send':
                 serializer_data = self.serializer.serialize(queryset)
-                heders = {
+                headers = {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Token e37c658100769f79b4f9cc347265060651b3a9e6'
+                    'Authorization': 'Token 1f1fee896c312a8d81b307fba57cbc6ffdc69b07'
                 }
                 print('serializer_data', serializer_data)
-                print('heders', heders)
+                print('headers', headers)
                 response = requests.post(
                     f'https://{self.remote_site.domain}/data_connector/super-api/{self.serializer.content_type.app_label}__{self.serializer.content_type.model}/',
-                    headers=heders,
+                    headers=headers,
                     json={'data': serializer_data},   
+                    verify=False, 
                 )
+                print('response', response)
                 if response.status_code != 200:
                     TransmitterLog.objects.create(
                         transmitter=self,
