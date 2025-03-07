@@ -125,24 +125,47 @@ class FieldHandler(SlugNamedAbstractModel):
         # print('value', value)   
         return value
     
-    def get_transform_data(self, value, serializer_field: models.Model):
+    def get_transform_data(self, value, serializer_field: models.Model) -> type:
         print('get_transform_data')
-        serializer_field_slug = serializer_field.slug
-        transform_data = value
+        field_error_data = {}
+        transform_field_name = serializer_field.slug
+        transform_field_value = value
 
         if self.slug == 'ForeignKey':
             try:
-                rel_object = getattr(obj, serializer_field_slug)
-                if rel_object:
-                    value = rel_object.id
+                if value is dict:
+                    field_error_data[serializer_field.slug] = 'Обработчик ожидает идентификатор обьекта, но получил dict'
+
                 else:
-                    value = None
+                    if 'id' not in serializer_field.slug:
+                        transform_field_name += '_id'
+                        # transform_field_value = int
             except Exception as e:
                 print(e)
-                value = f'Ошибка: {e}'   
+                value = f'Ошибка: {e}'  
+                field_error_data[serializer_field.slug] = f'Ошибка: {e}'
 
-        print('transform_data', transform_data)   
-        return transform_data
+        elif self.slug == 'serializer':
+            serializer: DataConnector = serializer_field.serializer
+            print('serializer', serializer)
+            print('transform_field_value', transform_field_value)
+            if not serializer:
+                field_error_data[serializer_field.slug] = f'У поля сериализатора(SerializerField id={serializer_field.id}) не указан сериализатор'
+            try:
+                if serializer_field.type == 'ForeignKey':
+                    transform_field_value = serializer.deserialize(transform_field_value, method='POST').first()
+                elif serializer_field.type == 'OneToOneField':
+                    pass
+                elif serializer_field.type == 'ManyToManyField':
+                    pass
+                elif serializer_field.type == 'GenericForeignKey':
+                    pass                 
+            except Exception as e:
+                print(e)
+                field_error_data[serializer_field.slug] = f'Ошибка: {e}'
+
+        print('transform_field_value', transform_field_value)   
+        return transform_field_name, transform_field_value, field_error_data
     
 
 class IncomingFieldHandler(SlugNamedAbstractModel):
@@ -389,16 +412,22 @@ class DataConnector(
 
         return serializer
 
-    def set_data(self, request_data: dict, method: str):
+    def set_data(self, request_data: dict, method: str, obj_id: Optional[int] = None):
         print('set_data')
         comment = ''
         response_status = 200
-        response_data = {}
+        
         try:
-            response_data = self.deserialize(request_data, method)
+            queryset = self.deserialize(request_data, method, obj_id)
         except Exception as error:
-            # print('set_data', queryset)
-            print('set_data', error)
+            queryset = self.content_type.model_class().objects.none()
+            print('error', error)
+
+        try:
+            response_data = self.serialize(queryset)
+        except Exception as error:
+            response_data = {}
+            print('error', error)
 
         return comment, response_status, response_data
     
@@ -437,7 +466,7 @@ class DataConnector(
 
         return serializer_data
     
-    def deserialize(self, request_data, method: str):
+    def deserialize(self, request_data, method: str, obj_id: Optional[int] = None):
         """
         Метод для десериализации данных модели.
         """
@@ -447,7 +476,11 @@ class DataConnector(
         print('serializer_fields', serializer_fields.values_list('slug', flat=True))
 
         error_data = {}
-        some_model = some_model_class()
+        if obj_id:
+            some_model = some_model_class.objects.get(id=obj_id)
+        else:
+            some_model = some_model_class()
+
         print('request_data_list', request_data_list)
         for request_data_dict in request_data_list:
             print('request_data_dict', request_data_dict)
@@ -460,12 +493,19 @@ class DataConnector(
                 try:
                     serializer_field = serializer_fields.filter(slug=field_name).first()
                     input_handler: FieldHandler = serializer_field.get_handler()
-                    setattr(some_model, field_name, input_handler.get_transform_data(field_value, serializer_field))
+                    transform_field_name, transform_field_value, error = input_handler.get_transform_data(field_value, serializer_field)
+                    setattr(some_model, transform_field_name, transform_field_value)
                 except Exception as error:
-                    print('DataConnector.deserialize() error', error)
+                    print(f'DataConnector.deserialize() error in field {field_name}', error)
+
+                finally:
+                    error_data[field_name] = error
 
                 some_model.save()
-        return request_data
+                queryset = some_model_class.objects.filter(id=some_model.id)
+
+        print('error_data', error_data)
+        return queryset
 
 
 class RemoteSite(models.Model):

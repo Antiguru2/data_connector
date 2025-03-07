@@ -156,13 +156,14 @@ class SuperApiView(APIView):
             return Response({"message": "Нельзя задать id для создаваемого обьекта"}, status=status.HTTP_404_NOT_FOUND)
 
         request_data = self.get_request_data(request)
+        print('request_data', request_data)
 
         if not request_data:
             return Response({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
 
-        data = request_data.get('data')
-        if not data:
-            return Response({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
+        # data = request_data.get('data')
+        # if not data:
+        #     return Response({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
 
         some_model = self.get_some_model(natural_key)
         if not some_model:
@@ -185,7 +186,7 @@ class SuperApiView(APIView):
         if not serializer:
             return Response({"message": "Сериализатор не найден"}, status=status.HTTP_404_NOT_FOUND)       
 
-        comment, response_status, response_data = serializer.set_data(data, method='POST') 
+        comment, response_status, response_data = serializer.set_data(request_data, method='POST') 
 
         return Response(
             {
@@ -195,7 +196,56 @@ class SuperApiView(APIView):
             status=response_status,
         )
     
-    def put(self, request, natural_key, obj_id=None):
+
+    def patch(self, request, natural_key, serializer_name=None, obj_id=None):
+        print('SuperApiView.patch()')
+        print('data', request.data)
+
+        if not obj_id:   
+            return Response({"message": "В url не задан id для обновляемого обьекта"}, status=status.HTTP_404_NOT_FOUND)
+
+        request_data = self.get_request_data(request)
+        print('request_data', request_data)
+
+        if not request_data:
+            return Response({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
+
+        # data = request_data.get('data')
+        # if not data:
+        #     return Response({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
+
+        some_model = self.get_some_model(natural_key)
+        if not some_model:
+            return Response({"message": "Нет модели с таким натуральным ключом"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer_self_assembly_data = None
+        if type(request_data) == dict:
+            serializer_self_assembly_data = request_data.get('serializer_self_assembly_data')
+
+        try:
+            serializer = DataConnector.get_serializer(
+                some_model,
+                'PATCH',
+                serializer_name, 
+                serializer_self_assembly_data,
+            )
+        except:
+            serializer = None
+
+        if not serializer:
+            return Response({"message": "Сериализатор не найден"}, status=status.HTTP_404_NOT_FOUND)       
+
+        comment, response_status, response_data = serializer.set_data(request_data, method='PATCH', obj_id=obj_id) 
+
+        return Response(
+            {
+                "message": comment,
+                "data": response_data,
+            }, 
+            status=response_status,
+        )
+    
+    def put(self, request, natural_key, serializer_name=None, obj_id=None):
         return Response({"message": "ok"}, status=status.HTTP_200_OK)
     
     def delete(self, request, natural_key, obj_id=None):
