@@ -29,7 +29,8 @@ class CandidateImportSerializer(serializers.ModelSerializer):
             'category',
             'comment',
             'is_viewed',
-
+            'is_analyzed',
+            'is_analyzing',
             'questions',
             'google_docs_file_id',
             'answers',
