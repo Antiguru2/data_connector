@@ -501,9 +501,9 @@ class DataConnector(
                 finally:
                     error_data[field_name] = error
 
-                some_model.save()
-                queryset = some_model_class.objects.filter(id=some_model.id)
-
+            some_model.save()
+            
+        queryset = some_model_class.objects.filter(id=some_model.id)
         print('error_data', error_data)
         return queryset
 
