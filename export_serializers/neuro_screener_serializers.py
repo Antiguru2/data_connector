@@ -126,21 +126,29 @@ class ProjectExportSerializer(serializers.ModelSerializer):
         
         project = super().update(instance, validated_data)
 
+        # Получаем ID всех строк поиска, которые пришли в запросе
+        incoming_search_row_ids = [row.get('id') for row in search_rows_data if row.get('id')]
+        
+        # Удаляем все строки поиска, которых нет в запросе
+        SearchRow.objects.filter(project=project).exclude(id__in=incoming_search_row_ids).delete()
+        
         # Обновление existing search rows
         for search_row_data in search_rows_data:
             # Если в данных есть ID, то это существующая запись, которую нужно обновить
-            if 'id' in search_row_data:
-                search_row = SearchRow.objects.get(id=search_row_data['id'], project=project)
-                if search_row:
+            if 'id' in search_row_data and search_row_data['id']:
+                try:
+                    search_row = SearchRow.objects.get(id=search_row_data['id'], project=project)
                     for attr, value in search_row_data.items():
                         setattr(search_row, attr, value)
                     search_row.save()
+                except SearchRow.DoesNotExist:
+                    # Если строка с таким ID не найдена, создаем новую
+                    search_row_data['project'] = project
+                    SearchRow.objects.create(**search_row_data)
             else:
                 # Если ID нет, значит, это новая запись
-                search_row_data['project'] = project.id
-                search_row_serializer = SearchRowSerializer(data=search_row_data)
-                if search_row_serializer.is_valid():
-                    search_row_serializer.save()
+                search_row_data['project'] = project
+                SearchRow.objects.create(**search_row_data)
         
         # Обновление existing search criteria
         for search_criterion_data in search_criteria_data:
@@ -150,10 +158,8 @@ class ProjectExportSerializer(serializers.ModelSerializer):
                     setattr(search_criterion, attr, value)
                 search_criterion.save()
             else:
-                search_criterion_data['project'] = project.id
-                search_criterion_serializer = SearchCriteriaSerializer(data=search_criterion_data)
-                if search_criterion_serializer.is_valid():
-                    search_criterion_serializer.save()
+                search_criterion_data['project'] = project
+                SearchCriteria.objects.create(**search_criterion_data)
 
         return project
     
