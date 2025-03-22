@@ -130,13 +130,14 @@ class ProjectExportSerializer(serializers.ModelSerializer):
         incoming_search_row_ids = [row.get('id') for row in search_rows_data if row.get('id')]
         
         # Удаляем все строки поиска, которых нет в запросе
-        if incoming_search_row_ids or not search_rows_data:
-            # Удаляем строки только если есть incoming_search_row_ids или нет search_rows_data вообще
+        if incoming_search_row_ids and search_rows_data:
+            # Удаляем строки только если есть incoming_search_row_ids И search_rows_data не пустой
+            # Это предотвращает удаление всех строк, когда search_rows_data не передается в запросе
             SearchRow.objects.filter(project=project).exclude(id__in=incoming_search_row_ids).delete()
         else:
-            # Если incoming_search_row_ids пустой, но search_rows_data не пустой, 
-            # значит пришли только новые строки без id, и мы не должны удалять существующие
-            print(f"Предотвращено удаление всех строк поиска для проекта {project.id}: incoming_search_row_ids пустой, но search_rows_data не пустой")
+            # Если incoming_search_row_ids пустой или search_rows_data пустой, 
+            # значит мы не должны удалять существующие строки
+            print(f"Предотвращено удаление строк поиска для проекта {project.id}: обновление не содержит данных о строках поиска")
         
         # Обновление existing search rows
         for search_row_data in search_rows_data:
