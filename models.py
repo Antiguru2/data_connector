@@ -35,14 +35,32 @@ class FieldHandler(SlugNamedAbstractModel):
         # print('slug', serializer_field.slug)
         # print('self.slug', self.slug)
         # print('obj', obj)
+        # print('type', type(obj))
+        # print('isinstance(obj, models.Model)', isinstance(obj, models.Model))
         serializer_field_slug = serializer_field.slug
         value = 'Не найдено'
-        if hasattr(obj, serializer_field_slug):
-            try:
-                value = getattr(obj, serializer_field_slug)
-            except Exception as e:
-                print(e)
-                value = f'Ошибка: {e}'
+
+        if isinstance(obj, models.Model):
+            # print('obj is models.Model')
+            obj: models.Model
+            if hasattr(obj, serializer_field_slug):
+                try:
+                    value = getattr(obj, serializer_field_slug)
+                    print('value', value)
+                except Exception as e:
+                    print(e)
+                    value = f'Ошибка: {e}'
+
+        elif isinstance(obj, dict):
+            # print('obj is dict')
+            obj: dict
+            if serializer_field_slug in obj.keys():
+                try:
+                    value = obj.get(serializer_field_slug)
+                    # print('value', value)
+                except Exception as e:
+                    print(e)
+                    value = f'Ошибка: {e}'
 
         if self.slug == 'default':
             if hasattr(obj, serializer_field_slug):
@@ -53,10 +71,10 @@ class FieldHandler(SlugNamedAbstractModel):
                     value = f'Ошибка: {e}'
 
         elif self.slug == 'serializer':
-            print('self.slug', self.slug)
-            print('serializer_field_slug', serializer_field_slug)
+            # print('self.slug', self.slug)
+            # print('serializer_field_slug', serializer_field_slug)
             serializer: DataConnector = serializer_field.serializer
-            print('serializer', serializer)
+            # print('serializer', serializer)
             if not serializer:
                 value = f'У поля сериализатора(SerializerField id={serializer_field.id}) не указан сериализатор'
             try:
@@ -72,7 +90,10 @@ class FieldHandler(SlugNamedAbstractModel):
                     queryset = related_class.objects.filter(
                         content_type=ContentType.objects.get_for_model(obj),
                         object_id=obj.id,
-                    )                   
+                    )       
+
+                elif serializer_field.type == 'JSONField':
+                    queryset = getattr(obj, serializer_field_slug)            
 
                 # print('queryset', queryset)
                 if not queryset or queryset == [None]:
@@ -126,7 +147,7 @@ class FieldHandler(SlugNamedAbstractModel):
         return value
     
     def get_transform_data(self, value, serializer_field: models.Model) -> type:
-        print('get_transform_data')
+        # print('get_transform_data')
         field_error_data = {}
         transform_field_name = serializer_field.slug
         transform_field_value = value
@@ -147,8 +168,8 @@ class FieldHandler(SlugNamedAbstractModel):
 
         elif self.slug == 'serializer':
             serializer: DataConnector = serializer_field.serializer
-            print('serializer', serializer)
-            print('transform_field_value', transform_field_value)
+            # print('serializer', serializer)
+            # print('transform_field_value', transform_field_value)
             if not serializer:
                 field_error_data[serializer_field.slug] = f'У поля сериализатора(SerializerField id={serializer_field.id}) не указан сериализатор'
             try:
@@ -164,7 +185,7 @@ class FieldHandler(SlugNamedAbstractModel):
                 print(e)
                 field_error_data[serializer_field.slug] = f'Ошибка: {e}'
 
-        print('transform_field_value', transform_field_value)   
+        # print('transform_field_value', transform_field_value)   
         return transform_field_name, transform_field_value, field_error_data
     
 
@@ -447,6 +468,7 @@ class DataConnector(
         """
         serializer_data = []
         for obj in queryset:
+            print('obj', obj)
             fields_data = {}
             serializer_fields = self.serializer_fields.filter(is_active=True).all()
             for serializer_field in serializer_fields:
