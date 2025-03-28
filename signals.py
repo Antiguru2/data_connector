@@ -17,6 +17,7 @@ from .models import (
     DataConnector,
     SerializerField,
     FieldHandler,
+    FormFieldHandler
 )
 
 try:
@@ -39,10 +40,18 @@ def create_initial_data(sender, **kwargs):
             ...
             # TODO Нужно сделать запрос на base_store, и получить остальные сайты и отправить этот туда
 
-        DataConnector.objects.get_or_create(
-            name='Сериализатор',
-            slug='serializer',
-        )
+        form_field_handlers = FormFieldHandler.objects.all()
+        if form_field_handlers.count() < len(SerializerField.TYPE_CHOICES):
+            for type_name, type_slug in SerializerField.TYPE_CHOICES:
+                form_field_handler, created_ = FormFieldHandler.objects.get_or_create(
+                    # name=type_name,
+                    slug=type_slug,
+                )
+
+        # DataConnector.objects.get_or_create(
+        #     name='Сериализатор',
+        #     slug='serializer',
+        # )
 
 
 @receiver(post_save, sender=Transmitter)

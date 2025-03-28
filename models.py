@@ -143,9 +143,9 @@ class FieldHandler(SlugNamedAbstractModel):
                 print(e)
                 value = f'Ошибка: {e}'           
 
-        # print('value', value)   
+        print('value', value)   
         return value
-    
+
     def get_transform_data(self, value, serializer_field: models.Model) -> type:
         # print('get_transform_data')
         field_error_data = {}
@@ -212,6 +212,47 @@ class IncomingFieldHandler(SlugNamedAbstractModel):
         serializer_field_slug = serializer_field.slug
         value = 'Не найдено' 
         return value
+    
+
+class FormFieldHandler(SlugNamedAbstractModel):
+    """
+    """
+
+    method = models.CharField(
+        max_length=255,
+        null=True, blank=True,
+    )
+
+    class Meta:
+        verbose_name = 'Обработчик полей формы'
+        verbose_name_plural = 'Обработчики полей формы'
+
+    def __str__(self) -> str:
+        result = super().__str__()
+        if self._meta.verbose_name:
+            result = self._meta.verbose_name
+
+            if self.slug:
+                result = f'{self.slug}'
+
+        return result
+    
+    @classmethod
+    def get_default_handler(cls):
+        default_handler, created = cls.objects.get_or_create(slug='default')
+        return default_handler
+
+    def get_html(self, value, serializer_field: models.Model):
+        print('get_html')
+        print('value', value)
+        serializer_field_slug = serializer_field.slug
+        html = ''
+
+        if self.slug == 'CharField':
+            html = f"<input name='{serializer_field.slug}' value='{value}'>"
+
+        print('html', html)
+        return html
 
 
 class SerializerField(SlugNamedAbstractModel):
@@ -258,6 +299,12 @@ class SerializerField(SlugNamedAbstractModel):
         on_delete=models.SET_NULL, 
         null=True, blank=True,
         verbose_name=FieldHandler._meta.verbose_name,
+    )
+    form_handler = models.ForeignKey(
+        FormFieldHandler, 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True,
+        verbose_name=FormFieldHandler._meta.verbose_name,
     )
     incoming_handler = models.ForeignKey(
         IncomingFieldHandler, 
@@ -315,10 +362,18 @@ class SerializerField(SlugNamedAbstractModel):
         return handler
     
     def get_input_handler(self):
-        handler = self.handler
+        handler = self.incoming_handler
 
         if not handler:
-            handler = FieldHandler.get_default_input_handler()
+            handler = IncomingFieldHandler.get_default_handler()
+
+        return handler
+
+    def get_form_handler(self):
+        handler = self.form_handler
+
+        if not handler:
+            handler = FormFieldHandler.get_default_handler()
 
         return handler
     
@@ -356,6 +411,10 @@ class DataConnector(
     is_allow_create = models.BooleanField(
         default=False,
         verbose_name='Разрешить создание',
+    )
+    is_allow_form = models.BooleanField(
+        default=False,
+        verbose_name='Разрешить получать форму',
     )
 
 
@@ -461,30 +520,63 @@ class DataConnector(
             print('get_data', error)
 
         return response_data
+    
+    def get_form(self, queryset):
+        print('get_form')
+        response_data = {}
+        try:
+            response_data = self.serialize(
+                queryset, 
+                get_form=True,
+            )
+        except Exception as error:
+            # print('get_data', queryset)
+            print('get_data', error)
 
-    def serialize(self, queryset=None):
+        return response_data
+
+    def serialize(
+            self, 
+            queryset=None, 
+            get_form=False,
+            **kwargs
+        ):
+        print('serialize')
+        print('get_form', get_form)
         """
-        Метод для сериализации данных модели.
+            Метод для сериализации данных модели.
         """
         serializer_data = []
         for obj in queryset:
-            print('obj', obj)
+            # print('obj', obj)
             fields_data = {}
             serializer_fields = self.serializer_fields.filter(is_active=True).all()
             for serializer_field in serializer_fields:
                 serializer_field: SerializerField
                 handler: FieldHandler = serializer_field.get_handler()
                 if not handler:
-                    fields_data[serializer_field.slug] = 'Oбработчик не настроен'
+                    value = 'Oбработчик не настроен'
                 else:
                     serializer_field_slug = serializer_field.slug
                     if serializer_field.alt_key:
                         serializer_field_slug = serializer_field.alt_key
                         
-                    fields_data[serializer_field_slug] = handler.get_value(obj, serializer_field)
+                    value = handler.get_value(obj, serializer_field)
 
-            if fields_data:
-                serializer_data.append(fields_data)
+                if get_form:
+                    form_handler = serializer_field.get_form_handler()
+                    if form_handler and serializer_field.form_handler:
+                        serializer_data.append({
+                            "verbose_name": serializer_field.name,
+                            "slug": serializer_field_slug,
+                            "label": serializer_field.name,
+                            "html": form_handler.get_html(value, serializer_field),
+                            "value": value,
+                        })
+                else:
+                    fields_data[serializer_field_slug] = value
+                    if fields_data:
+                        serializer_data.append(fields_data)
 
         return serializer_data
     

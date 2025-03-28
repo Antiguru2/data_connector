@@ -25,7 +25,8 @@ class SuperApiView(APIView):
 
     def get_some_model(self, natural_key, obj_id=None):
         try:
-            content_type = ContentType.objects.get_by_natural_key(*natural_key.split('__'))
+            separator = '__' if '__' in natural_key else '.'
+            content_type = ContentType.objects.get_by_natural_key(*natural_key.split(separator))
             some_model = content_type.model_class()
             print('type some_model', type(some_model))
             print('get_some_model some_model', some_model)
@@ -45,6 +46,7 @@ class SuperApiView(APIView):
     def get_queryset(self, some_model, obj_id=None, get_params={}):
         print('SuperApiView get_queryset')
         print('get_params', get_params)
+
         if obj_id:
             return some_model.objects.filter(id=obj_id)
         elif get_params:
@@ -53,13 +55,18 @@ class SuperApiView(APIView):
             return some_model.objects.all()
         
     def get_request_data(self, request):
+        print('get_request_data')
         request_data = {}
-        if request.data:
-            request_data = request.data
-        
-        elif request.body:
+        if request.body:
             request_data = json.loads(request.body)
+        
+        if not request_data and request.data:
+            request_data = request.data
 
+        if not request_data and request.POST:
+            request_data = request.POST
+        
+        print('request_data', request_data)
         return request_data
 
     def get_django_filter(self, get_params: QueryDict) -> dict:
@@ -71,6 +78,9 @@ class SuperApiView(APIView):
         for get_param_slug, get_param_value in get_params.items():
 
             print('get_param_value', get_param_value)
+
+            if get_param_slug == 'form':
+                continue
 
             # Пробразуем спецефичные для QueryDict значения в валидные значения для objects.filter()
             if get_param_value in ['True', 'true', 'False', 'false']:
@@ -140,7 +150,10 @@ class SuperApiView(APIView):
         if not serializer:
             return Response({"status": "error", "message": "У модели нет сериализатора"}, status=status.HTTP_404_NOT_FOUND)
         
-        data = serializer.get_data(queryset)
+        if 'form' in request.GET and obj_id:
+            data = serializer.get_form(queryset)
+        else:
+            data = serializer.get_data(queryset)
 
         if not data:
             return Response({"status": "error", "message": "Нет данных"}, status=status.HTTP_404_NOT_FOUND)
@@ -199,7 +212,6 @@ class SuperApiView(APIView):
 
     def patch(self, request, natural_key, serializer_name=None, obj_id=None):
         print('SuperApiView.patch()')
-        print('data', request.data)
 
         if not obj_id:   
             return Response({"message": "В url не задан id для обновляемого обьекта"}, status=status.HTTP_404_NOT_FOUND)
