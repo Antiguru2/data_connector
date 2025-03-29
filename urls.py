@@ -1,14 +1,18 @@
 from django.urls import include, path
-
 from rest_framework import routers
 
 from . import api
+from data_connector.local_api import (
+    HHAreaModelViewSet,
+)
 
 try:
     from data_connector.local_router import router as local_router
     router = local_router
 except ImportError:
-    router = routers.DefaultRouter()
+    local_router = routers.DefaultRouter()
+    local_router.register(r'hh_areas', HHAreaModelViewSet)
+    router = local_router
 
 
 urlpatterns = [
@@ -30,4 +34,6 @@ urlpatterns = [
         'super-api/<str:natural_key>/<str:serializer_name>/<int:obj_id>/',
         api.SuperApiView.as_view(),
     ),
+    path('api/hh_areas/search/', HHAreaModelViewSet.as_view({'get': 'search'})),
+    path('api/all_hh_areas/', HHAreaModelViewSet.as_view({'get': 'list_all'})),
 ]

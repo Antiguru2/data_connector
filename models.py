@@ -814,3 +814,15 @@ class TransmitterLog(models.Model):
                 result += f': {self.status}'
 
         return result
+
+
+class HHArea(models.Model):
+    hh_id = models.CharField(max_length=50, unique=True, db_index=True)
+    name = models.CharField(max_length=255, db_index=True)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['parent']),
+        ]

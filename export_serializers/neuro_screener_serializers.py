@@ -16,6 +16,8 @@ from talent_finder.models import (
     SearchCriteria,
     AnalysisStatistics,
     Prompt,
+    ProjectMetaData,
+    HHArea,
 )
 
 User = get_user_model()
@@ -253,7 +255,7 @@ class PromptsSerializer(serializers.ModelSerializer):
     project = serializers.PrimaryKeyRelatedField(
         queryset=Project.objects.all(),
         required=False,
-    )  
+    )
 
     class Meta:
         model = Prompt
@@ -266,3 +268,37 @@ class PromptsSerializer(serializers.ModelSerializer):
             'system',
             'user',
         ]
+
+
+class ProjectMetaDataSerializer(serializers.ModelSerializer):
+    project = serializers.PrimaryKeyRelatedField(
+        queryset=Project.objects.all(),
+    )
+
+    class Meta:
+        model = ProjectMetaData
+        fields = [
+            'id',
+            'project',
+            'position',
+            'location',
+            'salary_type',
+            'salary',
+            'payment_method',
+            'work_format',
+            'employment_type',
+            'experience',
+            'comment',
+        ]
+
+
+class HHAreaSerializer(serializers.ModelSerializer):
+    """Сериализатор для модели HHArea"""
+    parent_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = HHArea
+        fields = ['id', 'hh_id', 'name', 'parent', 'parent_name']
+    
+    def get_parent_name(self, obj):
+        return obj.parent.name if obj.parent else None
