@@ -16,6 +16,10 @@ from talent_finder.models import (
     SearchCriteria,
     AnalysisStatistics,
     Prompt,
+    ProjectMetaData,
+    HHArea,
+    AITask,
+    AITaskLog,
 )
 
 User = get_user_model()
@@ -266,3 +270,82 @@ class PromptsSerializer(serializers.ModelSerializer):
             'system',
             'user',
         ]
+
+
+class ProjectMetaDataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectMetaData
+        fields = [
+            'id',
+            'project',
+            'position',
+            'location',
+            'salary_type',
+            'salary',
+            'payment_method',
+            'work_format',
+            'employment_type',
+            'experience',
+            'comment',
+        ]
+
+
+class HHAreaSerializer(serializers.ModelSerializer):
+    parent_id = serializers.PrimaryKeyRelatedField(
+        source='parent',
+        queryset=HHArea.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    full_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = HHArea
+        fields = [
+            'id',
+            'hh_id',
+            'name',
+            'parent_id',
+            'is_popular',
+            'full_name',
+        ]
+    
+    def get_full_name(self, obj):
+        return obj.full_name()
+
+
+class AITaskLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AITaskLog
+        fields = [
+            'id',
+            'task',
+            'timestamp',
+            'message',
+            'level',
+        ]
+
+
+class AITaskSerializer(serializers.ModelSerializer):
+    logs = AITaskLogSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = AITask
+        fields = [
+            'id',
+            'project',
+            'task_type',
+            'status',
+            'created_at',
+            'updated_at',
+            'started_at',
+            'completed_at',
+            'progress',
+            'message',
+            'result_data',
+            'error_message',
+            'callback_url',
+            'external_task_id',
+            'logs',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
