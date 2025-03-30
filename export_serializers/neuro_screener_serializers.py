@@ -311,7 +311,7 @@ class HHAreaSerializer(serializers.ModelSerializer):
         ]
     
     def get_full_name(self, obj):
-        return obj.full_name()
+        return obj.full_name
 
 
 class AITaskLogSerializer(serializers.ModelSerializer):
