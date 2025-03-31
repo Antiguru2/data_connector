@@ -414,8 +414,33 @@ class AITaskModelViewSet(
         Используется для обратного вызова из n8n.
         """
         task = self.get_object()
-        result_data = request.data.get('result_data', {})
         
+        # Добавляем логирование входящих данных для отладки
+        AITaskLog.objects.create(
+            task=task,
+            message=f"Получены данные от n8n: {request.data}",
+            level='info'
+        )
+        
+        # Более безопасное получение result_data
+        try:
+            result_data = request.data.get('result_data', {})
+            # Если result_data пришел как строка (например, JSON-строка), пробуем его распарсить
+            if isinstance(result_data, str):
+                result_data = json.loads(result_data)
+            # Если result_data не является словарем, создаем пустой словарь
+            if not isinstance(result_data, dict):
+                result_data = {}
+        except Exception as e:
+            error_message = f"Ошибка при обработке result_data: {str(e)}"
+            AITaskLog.objects.create(
+                task=task,
+                message=error_message,
+                level='error'
+            )
+            result_data = {}
+        
+        # Отмечаем задачу как завершенную
         task.complete(result_data)
         
         # Создаем запись в логе
@@ -426,8 +451,45 @@ class AITaskModelViewSet(
         )
         
         # Если это задача генерации поисковых запросов, сохраняем полученные запросы
-        if task.task_type == AITask.TASK_TYPE_SEARCH_QUERY_GENERATION and 'search_rows' in result_data:
-            self.save_search_rows(task.project, result_data['search_rows'])
+        try:
+            if task.task_type == AITask.TASK_TYPE_SEARCH_QUERY_GENERATION:
+                # Проверяем, есть ли search_rows в result_data
+                if 'search_rows' in result_data:
+                    self.save_search_rows(task.project, result_data['search_rows'])
+                # Проверяем, возможно search_rows находится в корне запроса
+                elif 'search_rows' in request.data:
+                    self.save_search_rows(task.project, request.data['search_rows'])
+                # Проверяем ключ с пробелом в конце (ошибка в n8n)
+                elif 'search_rows ' in request.data:
+                    self.save_search_rows(task.project, request.data['search_rows '])
+                else:
+                    # Ищем ключ, который может содержать "search_rows" с пробелами или другими вариациями
+                    search_rows_key = None
+                    for key in request.data.keys():
+                        if 'search_rows' in key.lower().strip():
+                            search_rows_key = key
+                            break
+                    
+                    if search_rows_key:
+                        self.save_search_rows(task.project, request.data[search_rows_key])
+                        AITaskLog.objects.create(
+                            task=task,
+                            message=f"Найдены данные search_rows в ключе '{search_rows_key}'",
+                            level='info'
+                        )
+                    else:
+                        AITaskLog.objects.create(
+                            task=task,
+                            message="Не найдены данные search_rows в запросе",
+                            level='warning'
+                        )
+        except Exception as e:
+            error_message = f"Ошибка при сохранении поисковых запросов: {str(e)}"
+            AITaskLog.objects.create(
+                task=task,
+                message=error_message,
+                level='error'
+            )
         
         return Response(self.get_serializer(task).data)
     
@@ -525,7 +587,8 @@ class AITaskModelViewSet(
             'task_id': str(task.id),
             'callback_url': callback_url,
             'complete_url': complete_url,
-            'fail_url': fail_url
+            'fail_url': fail_url,
+            'save_url': complete_url  # Добавляем save_url, используя тот же URL что и для complete_url
         }
         
         # Добавляем метаданные проекта, если они есть
