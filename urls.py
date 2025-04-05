@@ -35,5 +35,6 @@ urlpatterns = [
         api.SuperApiView.as_view(),
     ),
     path('api/hh_areas/search/', HHAreaModelViewSet.as_view({'get': 'search'})),
+    path('api/hh_areas/get_names_by_ids/', HHAreaModelViewSet.as_view({'get': 'get_names_by_ids'})),
     path('api/all_hh_areas/', HHAreaModelViewSet.as_view({'get': 'list_all'})),
 ]
