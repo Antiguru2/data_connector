@@ -117,16 +117,15 @@ class CustomPageNumberPagination(PageNumberPagination):
         except:
             previous = None
 
+        # Измените здесь, чтобы настроить, какие данные будут возвращены
         return Response({
-            'links': {
-                'next': next,
-                'previous': previous
-            },
-            'count': self.page.paginator.count,
-            'total_pages': self.page.paginator.num_pages,
+            'count': self.page.paginator.count,  # Общее количество объектов
+            'next': next,  # URL следующей страницы
+            'previous': previous,  # URL предыдущей страницы
+            'results': data,  # Отфильтрованные результаты
+            # Можете добавить дополнительные поля по своему усмотрению
             'page_size': self.page_size,
             'current_page': self.page.number,
-            'results': data
         })
 
 
@@ -155,19 +154,13 @@ class AnalysisStatisticsModelViewSet(
         DemoUserPermission or IsStaffPermission,
     ]
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='last')
     def retrieve_last(self, request):
-        project_id = request.GET.get('project_id')
-        if not project_id:
-            return Response({"message": "Project ID is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        analysis_statistics = AnalysisStatistics.objects.filter(project_id=project_id).order_by('-created_at').first()
-        if not analysis_statistics:
-            return Response({"message": "Analysis statistics not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        serializer = self.get_serializer(analysis_statistics)
+        project_id = request.query_params.get('project_id')
+        last_analysis = self.queryset.filter(project_id=project_id).order_by('created_at').last()
+        serializer = self.get_serializer(last_analysis)
         return Response(serializer.data)
-
+    
 
 class SearchCriteriaModelViewSet(
     ViewSetAndFilterByGetParamsMixin,
@@ -219,34 +212,43 @@ class ProjectMetaDataModelViewSet(
         permissions.IsAuthenticated, 
         DemoUserPermission or IsStaffPermission,
     ]
-
-    @action(detail=False, methods=['post'])
+    
+    @action(detail=False, methods=['post'], url_path='create-for-project')
     def create_for_project(self, request):
         """
         Создает или обновляет метаданные для указанного проекта.
         """
+        print("=== НАЧАЛО ОБРАБОТКИ МЕТАДАННЫХ ПРОЕКТА ===")
         project_id = request.data.get('project')
+        print(f"Полученные данные: {request.data}")
+        print(f"Комментарий в запросе: {request.data.get('comment')}")
+        
         if not project_id:
-            return Response({"message": "Project ID is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            project = Project.objects.get(id=project_id)
-        except Project.DoesNotExist:
-            return Response({"message": f"Project with ID {project_id} not found"}, status=status.HTTP_404_NOT_FOUND)
-        
+            return Response(
+                {"error": "Project ID is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
         # Проверяем, существуют ли уже метаданные для этого проекта
         try:
-            meta = ProjectMetaData.objects.get(project=project)
-            # Если метаданные существуют, обновляем их
+            meta = ProjectMetaData.objects.get(project_id=project_id)
+            print(f"Найдены существующие метаданные для проекта {project_id}")
             serializer = self.get_serializer(meta, data=request.data, partial=True)
         except ProjectMetaData.DoesNotExist:
-            # Если метаданных нет, создаем новые
+            print(f"Метаданные для проекта {project_id} не найдены, создаем новые")
             serializer = self.get_serializer(data=request.data)
         
+        print(f"Данные для сериализатора: {request.data}")
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        print(f"Валидированные данные: {serializer.validated_data}")
+        print(f"Комментарий после валидации: {serializer.validated_data.get('comment')}")
         
-        return Response(serializer.data)
+        instance = serializer.save()
+        print(f"Метаданные сохранены. ID: {instance.id}")
+        print(f"Сохраненный комментарий: {instance.comment}")
+        print("=== КОНЕЦ ОБРАБОТКИ МЕТАДАННЫХ ПРОЕКТА ===")
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class HHAreaModelViewSet(
@@ -257,37 +259,65 @@ class HHAreaModelViewSet(
     serializer_class = HHAreaSerializer
     pagination_class = CustomPageNumberPagination
     permission_classes = [permissions.IsAuthenticated]
-
-    @action(detail=False, methods=['get'])
+    
+    @action(detail=False, methods=['get'], url_path='root-areas')
     def root_areas(self, request):
         """Получить только корневые регионы (страны)"""
-        areas = HHArea.objects.filter(parent__isnull=True)
+        areas = self.queryset.filter(parent=None)
         serializer = self.get_serializer(areas, many=True)
         return Response(serializer.data)
-
-    @action(detail=False, methods=['get'], url_path='child/(?P<parent_id>[^/.]+)')
+    
+    @action(detail=False, methods=['get'], url_path='child-areas/(?P<parent_id>\d+)')
     def child_areas(self, request, parent_id=None):
         """Получить дочерние регионы для указанного родительского региона"""
-        areas = HHArea.objects.filter(parent_id=parent_id)
+        areas = self.queryset.filter(parent_id=parent_id)
         serializer = self.get_serializer(areas, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='popular')
+    def popular_cities(self, request):
+        """
+        Получить список популярных городов для быстрого выбора.
+        Возвращает города, у которых установлен флаг is_popular=True.
+        """
+        popular_cities = self.queryset.filter(is_popular=True).order_by('name')
+        serializer = self.get_serializer(popular_cities, many=True)
+        return Response(serializer.data)
+        
+    @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
         """
-        Поиск регионов по названию.
-        Параметры:
-        - q: строка поиска
-        - limit: максимальное количество результатов (по умолчанию 10)
+        Поиск городов по запросу пользователя.
+        Ищет города, название которых начинается с введенного запроса.
+        Популярные города (отмеченные в админке) выводятся первыми.
         """
         query = request.query_params.get('q', '')
-        limit = int(request.query_params.get('limit', 10))
-        
-        if not query:
+        if not query or len(query) < 2:
             return Response([])
         
-        areas = HHArea.objects.filter(name__icontains=query)[:limit]
-        serializer = self.get_serializer(areas, many=True)
+        # Преобразуем первую букву запроса в верхний регистр, остальные - в нижний
+        # Это поможет найти города, которые начинаются с введенного запроса
+        capitalized_query = query[0].upper() + query[1:].lower()
+        
+        # Поиск по началу названия города
+        queryset = HHArea.objects.filter(
+            name__startswith=capitalized_query
+        ).select_related('parent')
+        
+        # Если нет результатов, пробуем поиск по содержанию
+        if queryset.count() == 0:
+            queryset = HHArea.objects.filter(
+                name__icontains=query
+            ).select_related('parent')
+        
+        # Сортируем результаты: сначала популярные города, затем остальные
+        # Используем order_by для сортировки: сначала по is_popular (в обратном порядке), затем по имени
+        queryset = queryset.order_by('-is_popular', 'name')
+        
+        # Ограничиваем результаты для производительности
+        queryset = queryset[:20]
+        
+        serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
@@ -296,36 +326,44 @@ class HHAreaModelViewSet(
         Получить все регионы без пагинации.
         Внимание: может возвращать большой объем данных!
         """
-        areas = HHArea.objects.all()
-        serializer = self.get_serializer(areas, many=True)
+        # Можно добавить фильтрацию, например, только для российских городов
+        queryset = self.queryset.filter(parent__parent__name='Россия')
+        serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
-        
-    @action(detail=False, methods=['get'])
+
+    @action(detail=False, methods=['get'], url_path='get_names_by_ids')
     def get_names_by_ids(self, request):
         """
-        Получить названия регионов по их ID.
-        Параметры:
-        - ids: список ID регионов, разделенных запятыми
+        Получить имена регионов по их ID.
+        Принимает параметр ids в виде строки с разделителями-запятыми или списка ID.
+        Возвращает словарь, где ключ - ID региона, значение - его имя.
         """
         ids_param = request.query_params.get('ids', '')
-        if not ids_param:
-            return Response([])
-            
-        # Разбиваем строку с ID на список
-        ids = [int(id_str) for id_str in ids_param.split(',') if id_str.strip().isdigit()]
         
-        if not ids:
-            return Response([])
-            
+        # Проверяем, что параметр не пустой
+        if not ids_param:
+            return Response({}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Преобразуем строку с ID в список
+        if isinstance(ids_param, str):
+            # Если передан один ID без запятой
+            if ',' not in ids_param:
+                ids = [ids_param]
+            else:
+                ids = ids_param.split(',')
+        else:
+            ids = ids_param
+        
+        # Очищаем список от пустых значений и преобразуем в целые числа
+        ids = [int(id_str) for id_str in ids if id_str.strip()]
+        
         # Получаем регионы по ID
         areas = HHArea.objects.filter(id__in=ids)
         
-        # Формируем результат в виде словаря {id: name}
-        result = {area.id: {
-            'name': area.name,
-            'hh_id': area.hh_id,
-            'full_name': area.full_name
-        } for area in areas}
+        # Формируем словарь {id: name}
+        result = {}
+        for area in areas:
+            result[str(area.id)] = area.name
         
         return Response(result)
 
@@ -337,14 +375,17 @@ class AITaskModelViewSet(
     queryset = AITask.objects.all()
     serializer_class = AITaskSerializer
     pagination_class = CustomPageNumberPagination
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [
+        permissions.IsAuthenticated, 
+        DemoUserPermission or IsStaffPermission,
+    ]
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], url_path='create-for-project')
     def create_for_project(self, request):
         """
-        Создает новую задачу для указанного проекта.
+        Создает новую задачу ИИ для указанного проекта.
         """
-        project_id = request.data.get('project_id')
+        project_id = request.data.get('project')
         task_type = request.data.get('task_type')
         
         if not project_id:
@@ -352,7 +393,7 @@ class AITaskModelViewSet(
                 {"error": "Project ID is required"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+            
         if not task_type:
             return Response(
                 {"error": "Task type is required"}, 
@@ -368,29 +409,341 @@ class AITaskModelViewSet(
             )
         
         # Создаем новую задачу
-        task = AITask.objects.create(
-            project=project,
-            task_type=task_type,
-            status=AITask.STATUS_PENDING,
-            progress=0
+        serializer = self.get_serializer(data={
+            'project': project_id,
+            'task_type': task_type,
+            'status': AITask.STATUS_PENDING,
+        })
+        
+        serializer.is_valid(raise_exception=True)
+        task = serializer.save()
+        
+        # Если это задача генерации поисковых запросов, отправляем запрос в n8n
+        if task_type == AITask.TASK_TYPE_SEARCH_QUERY_GENERATION:
+            # Запускаем задачу в фоновом режиме
+            self.start_search_query_generation(task, project)
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['post'], url_path='update-progress')
+    def update_progress(self, request, pk=None):
+        """
+        Обновляет прогресс выполнения задачи.
+        Используется для обратного вызова из n8n.
+        """
+        task = self.get_object()
+        progress = request.data.get('progress')
+        message = request.data.get('message')
+        
+        if progress is None:
+            return Response(
+                {"error": "Progress is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        task.update_progress(progress, message)
+        
+        # Создаем запись в логе
+        if message:
+            AITaskLog.objects.create(
+                task=task,
+                message=message,
+                level='info'
+            )
+        
+        return Response(self.get_serializer(task).data)
+    
+    @action(detail=True, methods=['post'], url_path='complete')
+    def complete_task(self, request, pk=None):
+        """
+        Отмечает задачу как завершенную.
+        Используется для обратного вызова из n8n.
+        """
+        task = self.get_object()
+        
+        # Добавляем логирование входящих данных для отладки
+        AITaskLog.objects.create(
+            task=task,
+            message=f"Получены данные от n8n: {request.data}",
+            level='info'
         )
+        
+        # Более безопасное получение result_data
+        try:
+            result_data = request.data.get('result_data', {})
+            # Если result_data пришел как строка (например, JSON-строка), пробуем его распарсить
+            if isinstance(result_data, str):
+                result_data = json.loads(result_data)
+            # Если result_data не является словарем, создаем пустой словарь
+            if not isinstance(result_data, dict):
+                result_data = {}
+        except Exception as e:
+            error_message = f"Ошибка при обработке result_data: {str(e)}"
+            AITaskLog.objects.create(
+                task=task,
+                message=error_message,
+                level='error'
+            )
+            result_data = {}
+        
+        # Отмечаем задачу как завершенную
+        task.complete(result_data)
         
         # Создаем запись в логе
         AITaskLog.objects.create(
             task=task,
-            message=f"Задача {task.get_task_type_display()} создана",
-            level='info'
+            message=f"Задача успешно завершена",
+            level='success'
         )
         
-        serializer = self.get_serializer(task)
+        # Если это задача генерации поисковых запросов, сохраняем полученные запросы
+        try:
+            if task.task_type == AITask.TASK_TYPE_SEARCH_QUERY_GENERATION:
+                # Проверяем, есть ли search_rows в result_data
+                if 'search_rows' in result_data:
+                    self.save_search_rows(task.project, result_data['search_rows'])
+                # Проверяем, возможно search_rows находится в корне запроса
+                elif 'search_rows' in request.data:
+                    self.save_search_rows(task.project, request.data['search_rows'])
+                # Проверяем ключ с пробелом в конце (ошибка в n8n)
+                elif 'search_rows ' in request.data:
+                    self.save_search_rows(task.project, request.data['search_rows '])
+                else:
+                    # Ищем ключ, который может содержать "search_rows" с пробелами или другими вариациями
+                    search_rows_key = None
+                    for key in request.data.keys():
+                        if 'search_rows' in key.lower().strip():
+                            search_rows_key = key
+                            break
+                    
+                    if search_rows_key:
+                        self.save_search_rows(task.project, request.data[search_rows_key])
+                        AITaskLog.objects.create(
+                            task=task,
+                            message=f"Найдены данные search_rows в ключе '{search_rows_key}'",
+                            level='info'
+                        )
+                    else:
+                        AITaskLog.objects.create(
+                            task=task,
+                            message="Не найдены данные search_rows в запросе",
+                            level='warning'
+                        )
+        except Exception as e:
+            error_message = f"Ошибка при сохранении поисковых запросов: {str(e)}"
+            AITaskLog.objects.create(
+                task=task,
+                message=error_message,
+                level='error'
+            )
+        
+        return Response(self.get_serializer(task).data)
+    
+    @action(detail=True, methods=['post'], url_path='fail')
+    def fail_task(self, request, pk=None):
+        """
+        Отмечает задачу как неудачную.
+        Используется для обратного вызова из n8n.
+        """
+        task = self.get_object()
+        error_message = request.data.get('error_message', 'Неизвестная ошибка')
+        
+        task.fail(error_message)
+        
+        # Создаем запись в логе
+        AITaskLog.objects.create(
+            task=task,
+            message=f"Задача завершилась с ошибкой: {error_message}",
+            level='error'
+        )
+        
+        return Response(self.get_serializer(task).data)
+    
+    @action(detail=False, methods=['get'], url_path='project/(?P<project_id>\d+)')
+    def get_tasks_for_project(self, request, project_id=None):
+        """
+        Получает все задачи для указанного проекта.
+        """
+        tasks = self.queryset.filter(project_id=project_id)
+        serializer = self.get_serializer(tasks, many=True)
         return Response(serializer.data)
     
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['get'], url_path='project/(?P<project_id>\d+)/latest/(?P<task_type>[a-z_]+)')
+    def get_latest_task(self, request, project_id=None, task_type=None):
+        """
+        Получает последнюю задачу указанного типа для проекта.
+        """
+        try:
+            task = self.queryset.filter(
+                project_id=project_id, 
+                task_type=task_type
+            ).latest('created_at')
+            serializer = self.get_serializer(task)
+            return Response(serializer.data)
+        except AITask.DoesNotExist:
+            return Response(
+                {"error": f"No tasks of type {task_type} found for project {project_id}"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    @action(detail=True, methods=['get'], url_path='status')
+    def get_status(self, request, pk=None):
+        """
+        Получает текущий статус задачи.
+        """
+        task = self.get_object()
+        
+        response_data = {
+            'id': task.id,
+            'status': task.status,
+            'progress': task.progress,
+            'status_message': task.message or '',
+            'created_at': task.created_at,
+            'updated_at': task.updated_at,
+        }
+        
+        if task.status == AITask.STATUS_COMPLETED:
+            response_data['result_data'] = task.result_data
+        elif task.status == AITask.STATUS_FAILED:
+            response_data['error'] = task.error_message
+        
+        return Response(response_data)
+
+    def start_search_query_generation(self, task, project):
+        """
+        Запускает процесс генерации поисковых запросов через n8n.
+        """
+        
+        # URL для обратного вызова
+        base_url = settings.BASE_URL if hasattr(settings, 'BASE_URL') else 'http://localhost:8000'
+        callback_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/update-progress/"
+        complete_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/complete/"
+        fail_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/fail/"
+        
+        # Получаем метаданные проекта
+        try:
+            meta = project.meta
+        except:
+            meta = None
+        
+        # Формируем данные для отправки в n8n
+        payload = {
+            'project_id': project.id,
+            'project_name': project.name,
+            'task_id': str(task.id),
+            'callback_url': callback_url,
+            'complete_url': complete_url,
+            'fail_url': fail_url,
+            'save_url': complete_url  # Добавляем save_url, используя тот же URL что и для complete_url
+        }
+        
+        # Добавляем метаданные проекта, если они есть
+        if meta:
+            payload.update({
+                'position': meta.position,
+                'location': meta.location,
+                'salary_type': meta.salary_type,
+                'salary': meta.salary,
+                'work_format': meta.work_format,
+                'employment_type': meta.employment_type,
+                'experience': meta.experience,
+                'comment': meta.comment
+            })
+        
+        # Добавляем поисковые критерии, если они есть
+        search_criteria = project.search_criteria.first()
+        if search_criteria:
+            payload.update({
+                'must_have': search_criteria.must_have,
+                'nice_to_have': search_criteria.nice_to_have,
+                'additional': search_criteria.additional,
+                'areas': search_criteria.areas
+            })
+        
+        # URL вебхука n8n
+        n8n_webhook_url = 'https://n8n.innoprompt.ru/webhook/0dcb7fc4-0989-445b-b855-8eaa59acae92'
+        
+        try:
+            # Обновляем задачу - она начала выполняться
+            task.start()
+            
+            # Создаем запись в логе
+            AITaskLog.objects.create(
+                task=task,
+                message=f"Отправка запроса на генерацию поисковых запросов в n8n",
+                level='info'
+            )
+            
+            # Отправляем запрос в n8n
+            response = requests.post(
+                n8n_webhook_url,
+                json=payload,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            # Проверяем ответ
+            if response.status_code == 200:
+                # Обновляем задачу с внешним ID, если он есть в ответе
+                try:
+                    response_data = response.json()
+                    if 'external_task_id' in response_data:
+                        task.external_task_id = response_data['external_task_id']
+                        task.save()
+                except:
+                    pass
+                
+                # Создаем запись в логе
+                AITaskLog.objects.create(
+                    task=task,
+                    message=f"Запрос успешно отправлен в n8n",
+                    level='info'
+                )
+            else:
+                # Если запрос не удался, отмечаем задачу как неудачную
+                error_message = f"Ошибка при отправке запроса в n8n: {response.status_code} {response.text}"
+                task.fail(error_message)
+                
+                # Создаем запись в логе
+                AITaskLog.objects.create(
+                    task=task,
+                    message=error_message,
+                    level='error'
+                )
+        except Exception as e:
+            # Если произошла ошибка, отмечаем задачу как неудачную
+            error_message = f"Ошибка при запуске задачи: {str(e)}"
+            task.fail(error_message)
+            
+            # Создаем запись в логе
+            AITaskLog.objects.create(
+                task=task,
+                message=error_message,
+                level='error'
+            )
+    
+    def save_search_rows(self, project, search_rows_data):
+        """
+        Сохраняет поисковые запросы, полученные от n8n.
+        """
+        # Удаляем существующие поисковые запросы
+        project.search_rows.all().delete()
+        
+        # Создаем новые поисковые запросы
+        for row_data in search_rows_data:
+            SearchRow.objects.create(
+                project=project,
+                text=row_data.get('text', ''),
+                logic=row_data.get('logic', 'any'),
+                period=row_data.get('period', 'all_time'),
+                field=row_data.get('field', 'everywhere')
+            )
+    
+    @action(detail=False, methods=['post'], url_path='create-search-criteria')
     def create_search_criteria(self, request):
         """
-        Создает задачу генерации поисковых критериев для указанного проекта.
+        Создает задачу для формирования поисковых критериев.
         """
-        project_id = request.data.get('project_id')
+        project_id = request.data.get('project')
         
         if not project_id:
             return Response(
@@ -407,242 +760,131 @@ class AITaskModelViewSet(
             )
         
         # Создаем новую задачу
-        task = AITask.objects.create(
-            project=project,
-            task_type=AITask.TASK_TYPE_SEARCH_CRITERIA_GENERATION,
-            status=AITask.STATUS_PENDING,
-            progress=0
-        )
+        serializer = self.get_serializer(data={
+            'project': project_id,
+            'task_type': AITask.TASK_TYPE_SEARCH_CRITERIA_GENERATION,
+            'status': AITask.STATUS_PENDING,
+        })
         
-        # Создаем запись в логе
-        AITaskLog.objects.create(
-            task=task,
-            message="Задача генерации поисковых критериев создана",
-            level='info'
-        )
+        serializer.is_valid(raise_exception=True)
+        task = serializer.save()
         
-        # Отправляем запрос в n8n для генерации поисковых критериев
-        try:
-            # Получаем метаданные проекта
-            meta = ProjectMetaData.objects.get(project=project)
-            
-            # Формируем данные для запроса
-            webhook_url = "https://n8n.innoprompt.ru/webhook/f07f3ee0-af32-4136-9670-1b8904f4226f"
-            payload = {
-                "task_id": task.id,
-                "project_id": project.id,
-                "position": meta.position,
-                "location": meta.location,
-                "salary_type": meta.salary_type,
-                "salary": meta.salary,
-                "payment_method": meta.payment_method,
-                "work_format": meta.work_format,
-                "employment_type": meta.employment_type,
-                "experience": meta.experience,
-                "comment": meta.comment
-            }
-            
-            # Отправляем запрос
-            response = requests.post(webhook_url, json=payload)
-            
-            if response.status_code != 200:
-                raise Exception(f"n8n вернул код ошибки: {response.status_code}")
-            
-            # Обновляем статус задачи
-            task.status = AITask.STATUS_IN_PROGRESS
-            task.started_at = timezone.now()
-            task.save()
-            
-            # Создаем запись в логе
-            AITaskLog.objects.create(
-                task=task,
-                message="Запрос на генерацию поисковых критериев отправлен",
-                level='info'
-            )
-            
-            serializer = self.get_serializer(task)
-            return Response(serializer.data)
-            
-        except Exception as e:
-            # Если произошла ошибка, отмечаем задачу как неудачную
-            task.status = AITask.STATUS_FAILED
-            task.error_message = str(e)
-            task.save()
-            
-            # Создаем запись в логе
-            AITaskLog.objects.create(
-                task=task,
-                message=f"Ошибка при отправке запроса: {str(e)}",
-                level='error'
-            )
-            
-            return Response(
-                {"error": f"Failed to start search criteria generation: {str(e)}"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
-    @action(detail=True, methods=['get'])
-    def status(self, request, pk=None):
+        # Запускаем задачу в фоновом режиме
+        self.start_search_criteria_generation(task, project)
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def start_search_criteria_generation(self, task, project):
         """
-        Получает статус задачи.
+        Запускает процесс генерации поисковых критериев через n8n.
         """
+        
+        # URL для обратного вызова
+        base_url = settings.BASE_URL if hasattr(settings, 'BASE_URL') else 'http://localhost:8000'
+        callback_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/update-progress/"
+        complete_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/complete/"
+        save_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/save-search-criteria/"
+        fail_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/fail/"
+        
+        # Получаем метаданные проекта
         try:
-            task = self.get_object()
-        except AITask.DoesNotExist:
-            return Response(
-                {"error": f"Task with ID {pk} not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
+            meta = project.meta
+        except:
+            meta = None
         
-        # Получаем последние логи задачи
-        logs = AITaskLog.objects.filter(task=task).order_by('-timestamp')[:10].values('message', 'level', 'timestamp')
-        
-        # Формируем ответ
-        response_data = {
-            "id": task.id,
-            "project_id": task.project.id,
-            "task_type": task.task_type,
-            "task_type_display": task.get_task_type_display(),
-            "status": task.status,
-            "status_display": task.get_status_display(),
-            "progress": task.progress,
-            "message": task.message,
-            "logs": list(logs),
-            "created_at": task.created_at,
-            "updated_at": task.updated_at,
-            "started_at": task.started_at,
-            "completed_at": task.completed_at,
+        # Формируем данные для отправки в n8n
+        payload = {
+            'project_id': project.id,
+            'project_name': project.name,
+            'task_id': str(task.id),
+            'callback_url': callback_url,
+            'complete_url': complete_url,
+            'save_url': save_url,
+            'fail_url': fail_url
         }
         
-        # Если задача завершена, добавляем результаты
-        if task.status == AITask.STATUS_COMPLETED and task.result_data:
-            response_data["result"] = task.result_data
+        # Добавляем метаданные проекта, если они есть
+        if meta:
+            payload.update({
+                'position': meta.position,
+                'location': meta.location,
+                'salary_type': meta.salary_type,
+                'salary': meta.salary,
+                'work_format': meta.work_format,
+                'employment_type': meta.employment_type,
+                'experience': meta.experience,
+                'comment': meta.comment
+            })
         
-        # Если задача завершилась с ошибкой, добавляем сообщение об ошибке
-        if task.status == AITask.STATUS_FAILED and task.error_message:
-            response_data["error"] = task.error_message
+        # URL вебхука n8n для генерации критериев
+        n8n_webhook_url = 'https://n8n.innoprompt.ru/webhook/f07f3ee0-af32-4136-9670-1b8904f4226f'
         
-        return Response(response_data)
-    
-    @action(detail=True, methods=['post'])
-    def update_progress(self, request, pk=None):
-        """
-        Обновляет прогресс выполнения задачи.
-        """
         try:
-            task = self.get_object()
-        except AITask.DoesNotExist:
-            return Response(
-                {"error": f"Task with ID {pk} not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        progress = request.data.get('progress')
-        message = request.data.get('message')
-        
-        if progress is not None:
-            task.progress = progress
-        
-        if message:
-            task.message = message
+            # Обновляем задачу - она начала выполняться
+            task.start()
             
             # Создаем запись в логе
             AITaskLog.objects.create(
                 task=task,
-                message=message,
+                message=f"Отправка запроса на генерацию поисковых критериев в n8n",
                 level='info'
             )
-        
-        # Если задача еще не в процессе, обновляем статус
-        if task.status == AITask.STATUS_PENDING:
-            task.status = AITask.STATUS_IN_PROGRESS
-            task.started_at = timezone.now()
-        
-        task.save()
-        
-        serializer = self.get_serializer(task)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def complete(self, request, pk=None):
-        """
-        Отмечает задачу как завершенную.
-        """
-        try:
-            task = self.get_object()
-        except AITask.DoesNotExist:
-            return Response(
-                {"error": f"Task with ID {pk} not found"}, 
-                status=status.HTTP_404_NOT_FOUND
+            
+            # Отправляем запрос в n8n
+            response = requests.post(
+                n8n_webhook_url,
+                json=payload,
+                headers={'Content-Type': 'application/json'}
             )
-        
-        result_data = request.data.get('result')
-        message = request.data.get('message', "Задача успешно завершена")
-        
-        task.status = AITask.STATUS_COMPLETED
-        task.progress = 100
-        task.message = message
-        task.completed_at = timezone.now()
-        
-        if result_data:
-            task.result_data = result_data
-        
-        task.save()
-        
-        # Создаем запись в логе
-        AITaskLog.objects.create(
-            task=task,
-            message=message,
-            level='success'
-        )
-        
-        serializer = self.get_serializer(task)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def fail(self, request, pk=None):
-        """
-        Отмечает задачу как неудачную.
-        """
-        try:
-            task = self.get_object()
-        except AITask.DoesNotExist:
-            return Response(
-                {"error": f"Task with ID {pk} not found"}, 
-                status=status.HTTP_404_NOT_FOUND
+            
+            # Проверяем ответ
+            if response.status_code == 200:
+                # Обновляем задачу с внешним ID, если он есть в ответе
+                try:
+                    response_data = response.json()
+                    if 'external_task_id' in response_data:
+                        task.external_task_id = response_data['external_task_id']
+                        task.save()
+                except:
+                    pass
+                
+                # Создаем запись в логе
+                AITaskLog.objects.create(
+                    task=task,
+                    message=f"Запрос успешно отправлен в n8n",
+                    level='info'
+                )
+            else:
+                # Если запрос не удался, отмечаем задачу как неудачную
+                error_message = f"Ошибка при отправке запроса в n8n: {response.status_code} {response.text}"
+                task.fail(error_message)
+                
+                # Создаем запись в логе
+                AITaskLog.objects.create(
+                    task=task,
+                    message=error_message,
+                    level='error'
+                )
+        except Exception as e:
+            # Если произошла ошибка, отмечаем задачу как неудачную
+            error_message = f"Ошибка при запуске задачи: {str(e)}"
+            task.fail(error_message)
+            
+            # Создаем запись в логе
+            AITaskLog.objects.create(
+                task=task,
+                message=error_message,
+                level='error'
             )
-        
-        error_message = request.data.get('error', "Неизвестная ошибка")
-        
-        task.status = AITask.STATUS_FAILED
-        task.error_message = error_message
-        task.completed_at = timezone.now()
-        task.save()
-        
-        # Создаем запись в логе
-        AITaskLog.objects.create(
-            task=task,
-            message=f"Ошибка: {error_message}",
-            level='error'
-        )
-        
-        serializer = self.get_serializer(task)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
+
+    @action(detail=True, methods=['post'], url_path='save-search-criteria')
     def save_search_criteria(self, request, pk=None):
         """
-        Сохраняет сгенерированные поисковые критерии для проекта.
+        Сохраняет поисковые критерии, полученные от n8n.
         """
-        try:
-            task = self.get_object()
-        except AITask.DoesNotExist:
-            return Response(
-                {"error": f"Task with ID {pk} not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
+        task = self.get_object()
+        criteria_data = request.data.get('criteria', {})
         
-        criteria_data = request.data.get('criteria')
         if not criteria_data:
             return Response(
                 {"error": "Criteria data is required"}, 
@@ -650,24 +892,20 @@ class AITaskModelViewSet(
             )
         
         try:
-            # Получаем или создаем критерии поиска для проекта
-            criteria, created = SearchCriteria.objects.get_or_create(
-                project=task.project,
-                defaults={
-                    'must_have': criteria_data.get('must_have', ''),
-                    'nice_to_have': criteria_data.get('nice_to_have', ''),
-                    'additional': criteria_data.get('additional', ''),
-                    'areas': criteria_data.get('areas', [])
-                }
-            )
+            # Получаем проект
+            project = task.project
             
-            # Если критерии уже существуют, обновляем их
-            if not created:
-                criteria.must_have = criteria_data.get('must_have', '')
-                criteria.nice_to_have = criteria_data.get('nice_to_have', '')
-                criteria.additional = criteria_data.get('additional', '')
-                criteria.areas = criteria_data.get('areas', [])
-                criteria.save()
+            # Удаляем существующие критерии, если они есть
+            project.search_criteria.all().delete()
+            
+            # Создаем новые критерии
+            SearchCriteria.objects.create(
+                project=project,
+                must_have=criteria_data.get('must_have', ''),
+                nice_to_have=criteria_data.get('nice_to_have', ''),
+                additional=criteria_data.get('additional', ''),
+                areas=criteria_data.get('areas', [])
+            )
             
             # Обновляем задачу
             task.complete({'criteria': criteria_data})

@@ -16,7 +16,7 @@ try:
     router.register(r'analysis_statistics', local_api.AnalysisStatisticsModelViewSet)
     router.register(r'prompts', local_api.PromptsModelViewSet)
     router.register(r'project_meta_data', local_api.ProjectMetaDataModelViewSet)
-    router.register(r'hh_areas', local_api.HHAreaModelViewSet)
+    router.register(r'hh_areas', local_api.HHAreaModelViewSet, basename='hh_areas')
     router.register(r'ai_tasks', local_api.AITaskModelViewSet)
 
 except ImportError:
