@@ -2,6 +2,7 @@ import requests
 import json
 from django.urls import reverse
 from django.conf import settings
+from django.db.models import Q
 
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -75,8 +76,8 @@ class ProjectsModelViewSet(ModelViewSet):
         if request.user:
             queryset = self.get_queryset().filter(
                 created_by=request.user
-            )
-
+            ).order_by('-created_at')
+        
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
@@ -86,9 +87,7 @@ class ProjectsModelViewSet(ModelViewSet):
         return Response(serializer.data)
     
     def create(self, request, *args, **kwargs):
-        serializer: ProjectExportSerializer = self.get_serializer(data=request.data)
-        if not request.user.is_authenticated:
-            return Response({"message": "User not found"}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(data=request.data)
         
         
         serializer.initial_data['created_by'] = request.user.id
@@ -100,6 +99,105 @@ class ProjectsModelViewSet(ModelViewSet):
     # def update(self, request, *args, **kwargs):
     #     return super().update(request, *args, **kwargs)
     
+    @action(detail=True, methods=['get'], url_path='statistics')
+    def get_project_statistics(self, request, pk=None):
+        """
+        Получение статистики проекта для нового интерфейса
+        """
+        try:
+            project = self.get_object()
+            
+            # Получаем общее количество резюме
+            total_resumes = Candidate.objects.filter(project=project).count()
+            
+            # Получаем количество проанализированных резюме
+            analyzed_resumes = Candidate.objects.filter(
+                project=project, 
+                category__in=['suitable', 'possibly_suitable', 'not_suitable']
+            ).count()
+            
+            # Получаем количество ожидающих анализа резюме
+            pending_resumes = Candidate.objects.filter(
+                project=project, 
+                category='not_analyzed'
+            ).count()
+            
+            # Вычисляем процент завершения
+            completion_percentage = 0
+            if total_resumes > 0:
+                completion_percentage = round((analyzed_resumes / total_resumes) * 100)
+            
+            # Получаем распределение по категориям
+            category_distribution = {
+                'suitable': Candidate.objects.filter(project=project, category='suitable').count(),
+                'possibly_suitable': Candidate.objects.filter(project=project, category='possibly_suitable').count(),
+                'not_suitable': Candidate.objects.filter(project=project, category='not_suitable').count(),
+                'not_analyzed': Candidate.objects.filter(project=project, category='not_analyzed').count()
+            }
+            
+            # Получаем время последнего обновления
+            last_updated = None
+            latest_candidate = Candidate.objects.filter(project=project).order_by('-updated_at').first()
+            if latest_candidate:
+                last_updated = latest_candidate.updated_at
+            
+            # Формируем ответ
+            response_data = {
+                'total_resumes': total_resumes,
+                'analyzed_resumes': analyzed_resumes,
+                'pending_resumes': pending_resumes,
+                'completion_percentage': completion_percentage,
+                'category_distribution': category_distribution,
+                'last_updated': last_updated
+            }
+            
+            return Response(response_data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['get'], url_path='candidates')
+    def get_project_candidates(self, request, pk=None):
+        """
+        Получение списка кандидатов проекта с возможностью фильтрации и поиска
+        """
+        try:
+            project = self.get_object()
+            
+            # Получаем параметры фильтрации
+            category = request.query_params.get('category', None)
+            search_query = request.query_params.get('search', None)
+            
+            # Формируем базовый запрос
+            candidates = Candidate.objects.filter(project=project)
+            
+            # Применяем фильтр по категории
+            if category:
+                candidates = candidates.filter(category=category)
+            
+            # Применяем поиск
+            if search_query:
+                candidates = candidates.filter(
+                    Q(name__icontains=search_query) | 
+                    Q(position__icontains=search_query) |
+                    Q(experience__icontains=search_query) |
+                    Q(ai_comment__icontains=search_query)
+                )
+            
+            # Сортируем результаты
+            candidates = candidates.order_by('-updated_at')
+            
+            # Пагинация
+            paginator = PageNumberPagination()
+            paginator.page_size = 12  # Количество кандидатов на странице
+            paginated_candidates = paginator.paginate_queryset(candidates, request)
+            
+            # Сериализуем данные
+            serializer = CandidateImportSerializer(paginated_candidates, many=True)
+            
+            return paginator.get_paginated_response(serializer.data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class CustomPageNumberPagination(PageNumberPagination):
     page_size = 10  # Установить размер страницы по умолчанию
@@ -921,9 +1019,6 @@ class AITaskModelViewSet(
         except Exception as e:
             # Если произошла ошибка, отмечаем задачу как неудачную
             error_message = f"Ошибка при сохранении поисковых критериев: {str(e)}"
-            task.fail(error_message)
-            
-            # Создаем запись в логе
             AITaskLog.objects.create(
                 task=task,
                 message=error_message,
@@ -934,6 +1029,106 @@ class AITaskModelViewSet(
                 {"error": error_message}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(detail=False, methods=['post'], url_path='create-resume-analysis')
+    def create_resume_analysis(self, request):
+        """
+        Создает новую задачу для анализа резюме в указанном проекте.
+        
+        Параметры:
+        - project_id: ID проекта для анализа (обязательный)
+        - max_parallel_requests: Максимальное количество одновременно обрабатываемых резюме (по умолчанию 5)
+        - batch_size: Количество резюме, обрабатываемых за один запуск команды (по умолчанию 3)
+        """
+        project_id = request.data.get('project_id')
+        max_parallel_requests = request.data.get('max_parallel_requests', 5)
+        batch_size = request.data.get('batch_size', 3)
+        
+        if not project_id:
+            return Response(
+                {"error": "Project ID is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        try:
+            project = Project.objects.get(id=project_id)
+        except Project.DoesNotExist:
+            return Response(
+                {"error": f"Project with ID {project_id} not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Проверяем, есть ли неанализированные кандидаты в проекте
+        candidates_count = project.candidates.filter(is_analyzed=False).count()
+        if candidates_count == 0:
+            return Response(
+                {"error": "No candidates to analyze in this project"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Создаем новую задачу
+        serializer = self.get_serializer(data={
+            'project': project_id,
+            'task_type': AITask.TASK_TYPE_RESUME_ANALYSIS,
+            'status': AITask.STATUS_PENDING,
+            'message': f"Задача на анализ {candidates_count} резюме создана",
+            'result_data': {
+                'total_candidates': candidates_count,
+                'analyzed_candidates': 0,
+                'max_parallel_requests': max_parallel_requests,
+                'batch_size': batch_size
+            }
+        })
+        
+        serializer.is_valid(raise_exception=True)
+        task = serializer.save()
+        
+        # Обновляем статус проекта
+        project.status = Project.STATUS_AI_RESUME_ANALYSIS
+        project.save()
+        
+        # Создаем запись в логе
+        AITaskLog.objects.create(
+            task=task,
+            message=f"Создана задача анализа резюме для проекта {project.name}. "
+                    f"Всего кандидатов: {candidates_count}, "
+                    f"Макс. параллельных запросов: {max_parallel_requests}, "
+                    f"Размер пакета: {batch_size}",
+            level='info'
+        )
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='analysis-status-for-project/(?P<project_id>[^/.]+)')
+    def get_analysis_task_status_for_project(self, request, project_id=None):
+        """
+        Получение статуса последней задачи анализа резюме для проекта
+        """
+        try:
+            # Находим последнюю задачу анализа резюме для проекта
+            task = self.queryset.filter(
+                project_id=project_id, 
+                task_type='resume_analysis'
+            ).order_by('-created_at').first()
+            
+            if not task:
+                return Response({
+                    'status': 'not_found',
+                    'message': 'Задача анализа резюме не найдена'
+                })
+            
+            # Формируем ответ с информацией о задаче
+            response_data = {
+                'id': task.id,
+                'status': task.status,
+                'progress': task.progress,
+                'created_at': task.created_at,
+                'updated_at': task.updated_at,
+            }
+            
+            return Response(response_data)
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'], url_path='project/(?P<project_id>[^/.]+)/resume-analysis-status')
     def get_task_status_for_project(self, request, project_id=None):
@@ -993,3 +1188,273 @@ class AITaskModelViewSet(
             response_data["error"] = task.error_message
         
         return Response(response_data)
+
+    @action(detail=True, methods=['post'], url_path='update-candidate-status')
+    def update_candidate_status(self, request, pk=None):
+        """
+        Обновляет статус кандидата после анализа.
+        Используется для обратного вызова из n8n.
+        
+        Параметры:
+        - candidate_id: ID кандидата, статус которого обновляется
+        - category: Категория кандидата (подходит, не подходит, возможно подходит)
+        - comment: Комментарий к кандидату
+        - vacancy: Вакансия, на которую подходит кандидат
+        - skills: Навыки кандидата
+        """
+        task = self.get_object()
+        candidate_id = request.data.get('candidate_id')
+        
+        if not candidate_id:
+            return Response(
+                {"error": "Candidate ID is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Добавляем логирование входящих данных для отладки
+        AITaskLog.objects.create(
+            task=task,
+            message=f"Получены данные от n8n для кандидата {candidate_id}: {request.data}",
+            level='info'
+        )
+        
+        try:
+            # Находим кандидата
+            candidate = Candidate.objects.get(id=candidate_id)
+            
+            # Обновляем поля кандидата
+            update_fields = {}
+            
+            # Проверяем наличие полей в запросе и добавляем их в словарь обновления
+            for field in ['category', 'comment', 'vacancy', 'skills']:
+                if field in request.data:
+                    update_fields[field] = request.data.get(field)
+            
+            # Обновляем статусы кандидата
+            update_fields['is_analyzed'] = True
+            update_fields['is_analyzing'] = False
+            
+            # Применяем обновления
+            for field, value in update_fields.items():
+                setattr(candidate, field, value)
+            candidate.save()
+            
+            # Обновляем счетчики в задаче
+            result_data = task.result_data or {}
+            analyzed_candidates = result_data.get('analyzed_candidates', 0) + 1
+            result_data['analyzed_candidates'] = analyzed_candidates
+            
+            # Обновляем прогресс задачи
+            total_candidates = result_data.get('total_candidates', 1)
+            progress = min(100, int(analyzed_candidates / total_candidates * 100))
+            
+            # Обновляем задачу
+            task.result_data = result_data
+            task.update_progress(
+                progress, 
+                f"Обработано {analyzed_candidates} из {total_candidates} кандидатов"
+            )
+            
+            # Создаем запись в логе
+            AITaskLog.objects.create(
+                task=task,
+                message=f"Кандидат {candidate_id} успешно проанализирован",
+                level='success'
+            )
+            
+            # Проверяем, остались ли необработанные кандидаты
+            if not Candidate.objects.filter(
+                project_id=task.project_id,
+                is_analyzed=False
+            ).exists():
+                # Все кандидаты обработаны, завершаем задачу
+                task.complete(result_data)
+                task.project.status = Project.STATUS_CHOICES[2][0]  # Завершенный статус
+                task.project.save()
+                
+                AITaskLog.objects.create(
+                    task=task,
+                    message="Все кандидаты обработаны, задача завершена",
+                    level='success'
+                )
+            
+            return Response({"status": "success"})
+            
+        except Candidate.DoesNotExist:
+            error_message = f"Кандидат с ID {candidate_id} не найден"
+            AITaskLog.objects.create(
+                task=task,
+                message=error_message,
+                level='error'
+            )
+            return Response(
+                {"error": error_message}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
+        except Exception as e:
+            error_message = f"Ошибка при обновлении статуса кандидата: {str(e)}"
+            AITaskLog.objects.create(
+                task=task,
+                message=error_message,
+                level='error'
+            )
+            return Response(
+                {"error": error_message}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'], url_path='task-status-for-project/(?P<project_id>[^/.]+)')
+    def get_task_status_for_project(self, request, project_id=None):
+        """
+        Получение статуса последней задачи анализа резюме для проекта
+        """
+        try:
+            # Находим последнюю задачу анализа резюме для проекта
+            task = self.queryset.filter(
+                project_id=project_id, 
+                task_type='resume_analysis'
+            ).order_by('-created_at').first()
+            
+            if not task:
+                return Response({
+                    'status': 'not_found',
+                    'message': 'Задача анализа резюме не найдена'
+                })
+            
+            # Формируем ответ с информацией о задаче
+            response_data = {
+                'id': task.id,
+                'status': task.status,
+                'progress': task.progress,
+                'created_at': task.created_at,
+                'updated_at': task.updated_at
+            }
+            
+            return Response(response_data)
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'], url_path='stop-for-project/(?P<project_id>[^/.]+)')
+    def stop_task_for_project(self, request, project_id=None):
+        """
+        Остановка текущей задачи анализа резюме для проекта
+        """
+        try:
+            # Находим последнюю активную задачу анализа резюме для проекта
+            task = self.queryset.filter(
+                project_id=project_id, 
+                task_type='resume_analysis',
+                status='in_progress'
+            ).order_by('-created_at').first()
+            
+            if not task:
+                return Response({
+                    'status': 'not_found',
+                    'message': 'Активная задача анализа резюме не найдена'
+                })
+            
+            # Отмечаем задачу как остановленную
+            task.status = 'failed'
+            task.error_message = 'Задача остановлена пользователем'
+            task.save()
+            
+            # Создаем запись в логе
+            AITaskLog.objects.create(
+                task=task,
+                message=f"Задача остановлена пользователем",
+                level='warning'
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': 'Задача успешно остановлена'
+            })
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], url_path='stop-analysis/(?P<project_id>[^/.]+)')
+    def stop_analysis_task(self, request, project_id=None):
+        """
+        Остановка текущей задачи анализа резюме для проекта
+        """
+        try:
+            # Находим последнюю активную задачу анализа резюме для проекта
+            task = self.queryset.filter(
+                project_id=project_id, 
+                task_type='resume_analysis',
+                status='in_progress'
+            ).order_by('-created_at').first()
+            
+            if not task:
+                return Response({
+                    'status': 'not_found',
+                    'message': 'Активная задача анализа резюме не найдена'
+                })
+            
+            # Отмечаем задачу как остановленную
+            task.status = 'failed'
+            task.error_message = 'Задача остановлена пользователем'
+            task.save()
+            
+            # Создаем запись в логе
+            AITaskLog.objects.create(
+                task=task,
+                message=f"Задача остановлена пользователем",
+                level='warning'
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': 'Задача успешно остановлена'
+            })
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'], url_path='start-analysis/(?P<project_id>[^/.]+)')
+    def start_analysis_task(self, request, project_id=None):
+        """
+        Запуск задачи анализа резюме для проекта
+        """
+        try:
+            # Проверяем, есть ли уже активная задача анализа резюме для проекта
+            active_task = self.queryset.filter(
+                project_id=project_id, 
+                task_type='resume_analysis',
+                status='in_progress'
+            ).exists()
+            
+            if active_task:
+                return Response({
+                    'status': 'error',
+                    'message': 'Для данного проекта уже запущена задача анализа резюме'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Создаем новую задачу анализа резюме
+            serializer = self.get_serializer(data={
+                'project': project_id,
+                'task_type': 'resume_analysis',
+                'status': 'in_progress',
+                'progress': 0
+            })
+            
+            serializer.is_valid(raise_exception=True)
+            task = serializer.save()
+            
+            # Создаем запись в логе
+            AITaskLog.objects.create(
+                task=task,
+                message=f"Задача анализа резюме запущена",
+                level='info'
+            )
+            
+            # Здесь можно добавить логику для запуска анализа резюме
+            # Например, вызов n8n webhook или другой сервис
+            
+            return Response({
+                'status': 'success',
+                'message': 'Задача анализа резюме успешно запущена',
+                'task_id': task.id
+            })
+        except Exception as e:
+            return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
