@@ -4,6 +4,7 @@ from rest_framework import routers
 from . import api
 from data_connector.local_api import (
     HHAreaModelViewSet,
+    ProjectMetaDataModelViewSet,
 )
 
 try:
@@ -12,6 +13,7 @@ try:
 except ImportError:
     local_router = routers.DefaultRouter()
     local_router.register(r'hh_areas', HHAreaModelViewSet)
+    local_router.register(r'project_meta_data', ProjectMetaDataModelViewSet)
     router = local_router
 
 
@@ -37,4 +39,6 @@ urlpatterns = [
     path('api/hh_areas/search/', HHAreaModelViewSet.as_view({'get': 'search'})),
     path('api/hh_areas/get_names_by_ids/', HHAreaModelViewSet.as_view({'get': 'get_names_by_ids'})),
     path('api/all_hh_areas/', HHAreaModelViewSet.as_view({'get': 'list_all'})),
+    path('api/project_meta_data/project/<int:project_id>/', ProjectMetaDataModelViewSet.as_view({'get': 'get_by_project'})),
+    path('api/project_meta_data/update-for-project/<int:project_id>/', ProjectMetaDataModelViewSet.as_view({'post': 'update_for_project'})),
 ]

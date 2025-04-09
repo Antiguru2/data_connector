@@ -177,3 +177,58 @@ response = requests.delete('http://your-api/data_connector/api/your-model/1/')
 Изменения
 добавлен файл local_router
 он для подключения рест роутеров
+
+### Сериализаторы для расширенных данных кандидатов
+
+#### CandidateImportSerializer
+```python
+class CandidateImportSerializer(serializers.ModelSerializer):
+    title = serializers.CharField(source='resume_title')
+    name = serializers.CharField(source='candidat_full_name')
+    experience = serializers.CharField(source='experience_text')
+    ai_comment = serializers.CharField(source='comment')
+    resume_url = serializers.CharField(source='hh_url')
+    
+    class Meta:
+        model = Candidate
+        fields = [
+            'id',
+            'project',
+            'hh_resume_id',
+            'title',
+            'name',
+            'resume_url',
+            'category',
+            'ai_comment',
+            'comment',
+            'experience',
+            'is_viewed',
+            'is_analyzed',
+            'is_analyzing',
+            'questions',
+            'google_docs_file_id',
+            'answers',
+            'username',
+            'interview_date',
+            'salary',
+            'age',
+            'gender',
+            'area',
+            'contact_email',
+            'contact_phone',
+            'total_experience_years',
+            'experience_json',
+        ]
+```
+
+#### Расширенные поля в сериализаторах
+- `experience_text`: Текстовое представление опыта работы
+- `experience_json`: Структурированное представление опыта в JSON
+- `total_experience_years`: Общий опыт работы в годах
+- `salary`: Зарплатные ожидания кандидата
+- `age`: Возраст кандидата
+- `gender`: Пол кандидата
+- `area`: Регион/город кандидата
+- `contact_email`: Email для связи
+- `contact_phone`: Телефон для связи
+- `resume_updated_at`: Дата последнего обновления резюме

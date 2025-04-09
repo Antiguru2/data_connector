@@ -177,10 +177,10 @@ class ProjectsModelViewSet(ModelViewSet):
             # Применяем поиск
             if search_query:
                 candidates = candidates.filter(
-                    Q(name__icontains=search_query) | 
-                    Q(position__icontains=search_query) |
-                    Q(experience__icontains=search_query) |
-                    Q(ai_comment__icontains=search_query)
+                    Q(candidat_full_name__icontains=search_query) | 
+                    Q(resume_title__icontains=search_query) |
+                    Q(experience_text__icontains=search_query) |
+                    Q(comment__icontains=search_query)
                 )
             
             # Сортируем результаты
@@ -311,42 +311,46 @@ class ProjectMetaDataModelViewSet(
         DemoUserPermission or IsStaffPermission,
     ]
     
+    @action(detail=False, methods=['get'], url_path='project/(?P<project_id>\d+)')
+    def get_by_project(self, request, project_id=None):
+        try:
+            meta_data = ProjectMetaData.objects.get(project_id=project_id)
+            serializer = self.get_serializer(meta_data)
+            return Response(serializer.data)
+        except ProjectMetaData.DoesNotExist:
+            return Response(
+                {
+                    'position': '',
+                    'location': '',
+                    'salary_type': 'fixed',
+                    'salary': '',
+                    'payment_method': 'cash',
+                    'work_format': '',
+                    'employment_type': '',
+                    'experience': '',
+                    'comment': ''
+                },
+                status=status.HTTP_200_OK
+            )
+
+    @action(detail=False, methods=['post'], url_path='update-for-project/(?P<project_id>\d+)')
+    def update_for_project(self, request, project_id=None):
+        try:
+            meta_data = ProjectMetaData.objects.get(project_id=project_id)
+            serializer = self.get_serializer(meta_data, data=request.data, partial=True)
+        except ProjectMetaData.DoesNotExist:
+            serializer = self.get_serializer(data={**request.data, 'project': project_id})
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
     @action(detail=False, methods=['post'], url_path='create-for-project')
     def create_for_project(self, request):
-        """
-        Создает или обновляет метаданные для указанного проекта.
-        """
-        print("=== НАЧАЛО ОБРАБОТКИ МЕТАДАННЫХ ПРОЕКТА ===")
-        project_id = request.data.get('project')
-        print(f"Полученные данные: {request.data}")
-        print(f"Комментарий в запросе: {request.data.get('comment')}")
-        
-        if not project_id:
-            return Response(
-                {"error": "Project ID is required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        # Проверяем, существуют ли уже метаданные для этого проекта
-        try:
-            meta = ProjectMetaData.objects.get(project_id=project_id)
-            print(f"Найдены существующие метаданные для проекта {project_id}")
-            serializer = self.get_serializer(meta, data=request.data, partial=True)
-        except ProjectMetaData.DoesNotExist:
-            print(f"Метаданные для проекта {project_id} не найдены, создаем новые")
-            serializer = self.get_serializer(data=request.data)
-        
-        print(f"Данные для сериализатора: {request.data}")
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        print(f"Валидированные данные: {serializer.validated_data}")
-        print(f"Комментарий после валидации: {serializer.validated_data.get('comment')}")
-        
-        instance = serializer.save()
-        print(f"Метаданные сохранены. ID: {instance.id}")
-        print(f"Сохраненный комментарий: {instance.comment}")
-        print("=== КОНЕЦ ОБРАБОТКИ МЕТАДАННЫХ ПРОЕКТА ===")
-        
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class HHAreaModelViewSet(
@@ -520,6 +524,10 @@ class AITaskModelViewSet(
         if task_type == AITask.TASK_TYPE_SEARCH_QUERY_GENERATION:
             # Запускаем задачу в фоновом режиме
             self.start_search_query_generation(task, project)
+        # Если это задача создания команды оценки, отправляем запрос в n8n
+        elif task_type == AITask.TASK_TYPE_EVALUATORS_TEAM_CREATION:
+            # Запускаем задачу в фоновом режиме
+            self.start_evaluators_team_creation(task, project)
         
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
@@ -566,17 +574,40 @@ class AITaskModelViewSet(
             level='info'
         )
         
-        # Более безопасное получение result_data
         try:
-            result_data = request.data.get('result_data', {})
-            # Если result_data пришел как строка (например, JSON-строка), пробуем его распарсить
-            if isinstance(result_data, str):
-                result_data = json.loads(result_data)
-            # Если result_data не является словарем, создаем пустой словарь
-            if not isinstance(result_data, dict):
-                result_data = {}
+            # Получаем данные из запроса
+            result_data = request.data.get('result_data')
+            search_rows_data = request.data.get('search_rows')
+            
+            # Если это задача создания команды оценки
+            if task.task_type == AITask.TASK_TYPE_EVALUATORS_TEAM_CREATION:
+                if isinstance(result_data, list):
+                    task.project.json_prompts = result_data
+                    task.project.save()
+                    AITaskLog.objects.create(
+                        task=task,
+                        message=f"Промпты успешно сохранены в проект: {result_data}",
+                        level='success'
+                    )
+            
+            # Если это задача генерации поисковых запросов
+            elif task.task_type == AITask.TASK_TYPE_SEARCH_QUERY_GENERATION:
+                # Проверяем наличие search_rows в разных местах
+                if search_rows_data:
+                    self.save_search_rows(task.project, search_rows_data, task)
+                elif isinstance(result_data, dict) and 'search_rows' in result_data:
+                    self.save_search_rows(task.project, result_data['search_rows'], task)
+                elif isinstance(result_data, list) and len(result_data) > 0 and isinstance(result_data[0], dict) and 'search_rows' in result_data[0]:
+                    self.save_search_rows(task.project, result_data[0]['search_rows'], task)
+                else:
+                    AITaskLog.objects.create(
+                        task=task,
+                        message="Не найдены данные search_rows в запросе",
+                        level='warning'
+                    )
+                    
         except Exception as e:
-            error_message = f"Ошибка при обработке result_data: {str(e)}"
+            error_message = f"Ошибка при обработке данных: {str(e)}"
             AITaskLog.objects.create(
                 task=task,
                 message=error_message,
@@ -585,7 +616,7 @@ class AITaskModelViewSet(
             result_data = {}
         
         # Отмечаем задачу как завершенную
-        task.complete(result_data)
+        task.complete(result_data or {})
         
         # Создаем запись в логе
         AITaskLog.objects.create(
@@ -593,47 +624,6 @@ class AITaskModelViewSet(
             message=f"Задача успешно завершена",
             level='success'
         )
-        
-        # Если это задача генерации поисковых запросов, сохраняем полученные запросы
-        try:
-            if task.task_type == AITask.TASK_TYPE_SEARCH_QUERY_GENERATION:
-                # Проверяем, есть ли search_rows в result_data
-                if 'search_rows' in result_data:
-                    self.save_search_rows(task.project, result_data['search_rows'])
-                # Проверяем, возможно search_rows находится в корне запроса
-                elif 'search_rows' in request.data:
-                    self.save_search_rows(task.project, request.data['search_rows'])
-                # Проверяем ключ с пробелом в конце (ошибка в n8n)
-                elif 'search_rows ' in request.data:
-                    self.save_search_rows(task.project, request.data['search_rows '])
-                else:
-                    # Ищем ключ, который может содержать "search_rows" с пробелами или другими вариациями
-                    search_rows_key = None
-                    for key in request.data.keys():
-                        if 'search_rows' in key.lower().strip():
-                            search_rows_key = key
-                            break
-                    
-                    if search_rows_key:
-                        self.save_search_rows(task.project, request.data[search_rows_key])
-                        AITaskLog.objects.create(
-                            task=task,
-                            message=f"Найдены данные search_rows в ключе '{search_rows_key}'",
-                            level='info'
-                        )
-                    else:
-                        AITaskLog.objects.create(
-                            task=task,
-                            message="Не найдены данные search_rows в запросе",
-                            level='warning'
-                        )
-        except Exception as e:
-            error_message = f"Ошибка при сохранении поисковых запросов: {str(e)}"
-            AITaskLog.objects.create(
-                task=task,
-                message=error_message,
-                level='error'
-            )
         
         return Response(self.get_serializer(task).data)
     
@@ -819,23 +809,33 @@ class AITaskModelViewSet(
                 level='error'
             )
     
-    def save_search_rows(self, project, search_rows_data):
-        """
-        Сохраняет поисковые запросы, полученные от n8n.
-        """
-        # Удаляем существующие поисковые запросы
-        project.search_rows.all().delete()
-        
-        # Создаем новые поисковые запросы
-        for row_data in search_rows_data:
-            SearchRow.objects.create(
-                project=project,
-                text=row_data.get('text', ''),
-                logic=row_data.get('logic', 'any'),
-                period=row_data.get('period', 'all_time'),
-                field=row_data.get('field', 'everywhere')
+    def save_search_rows(self, project, search_rows_data, task=None):
+        """Сохраняет поисковые строки для проекта"""
+        try:
+            # Удаляем старые поисковые строки
+            project.search_rows.all().delete()
+            
+            # Создаем новые поисковые строки
+            for row_data in search_rows_data:
+                project.search_rows.create(
+                    text=row_data['text'],
+                    logic=row_data.get('logic', 'any'),
+                    field=row_data.get('field', 'all'),
+                    period=row_data.get('period')
+                )
+            
+            AITaskLog.objects.create(
+                task=task,
+                message=f"Поисковые строки успешно сохранены для проекта {project.name}: {search_rows_data}",
+                level='success'
             )
-    
+        except Exception as e:
+            AITaskLog.objects.create(
+                task=task,
+                message=f"Ошибка при сохранении поисковых строк: {str(e)}",
+                level='error'
+            )
+
     @action(detail=False, methods=['post'], url_path='create-search-criteria')
     def create_search_criteria(self, request):
         """
@@ -1040,9 +1040,10 @@ class AITaskModelViewSet(
         - max_parallel_requests: Максимальное количество одновременно обрабатываемых резюме (по умолчанию 5)
         - batch_size: Количество резюме, обрабатываемых за один запуск команды (по умолчанию 3)
         """
+        # TODO: добавить получение параметров из настроек
         project_id = request.data.get('project_id')
-        max_parallel_requests = request.data.get('max_parallel_requests', 5)
-        batch_size = request.data.get('batch_size', 3)
+        max_parallel_requests = request.data.get('max_parallel_requests', 10)
+        batch_size = request.data.get('batch_size', 5)
         
         if not project_id:
             return Response(
@@ -1458,3 +1459,84 @@ class AITaskModelViewSet(
             })
         except Exception as e:
             return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def start_evaluators_team_creation(self, task, project):
+        """
+        Запускает процесс создания команды оценки через n8n.
+        """
+        # URL для обратного вызова
+        base_url = settings.BASE_URL if hasattr(settings, 'BASE_URL') else 'http://localhost:8000'
+        callback_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/update-progress/"
+        complete_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/complete/"
+        fail_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/fail/"
+        
+        # Получаем поисковые критерии проекта
+        search_criteria = project.search_criteria.first()
+        if not search_criteria:
+            error_message = "Не найдены поисковые критерии для проекта"
+            task.fail(error_message)
+            AITaskLog.objects.create(
+                task=task,
+                message=error_message,
+                level='error'
+            )
+            return
+        
+        # Формируем данные для отправки в n8n
+        payload = {
+            'project_id': project.id,
+            'must_have': search_criteria.must_have,
+            'nice_to_have': search_criteria.nice_to_have,
+            'additional': search_criteria.additional,
+            'vacancy': project.name,
+            'task_id': str(task.id),
+            'callback_url': callback_url,
+            'complete_url': complete_url,
+            'fail_url': fail_url
+        }
+        
+        # URL вебхука n8n для создания команды оценки
+        n8n_webhook_url = 'https://n8n.innoprompt.ru/webhook/9b1bd856-b8a1-4357-b7fc-60cb3d387277'
+        
+        try:
+            # Обновляем задачу - она начала выполняться
+            task.start()
+            
+            # Создаем запись в логе
+            AITaskLog.objects.create(
+                task=task,
+                message=f"Отправка запроса на создание команды оценки в n8n",
+                level='info'
+            )
+            
+            # Отправляем запрос в n8n
+            response = requests.post(
+                n8n_webhook_url,
+                json=payload,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            # Проверяем ответ
+            if response.status_code != 200:
+                error_message = f"Ошибка при отправке запроса в n8n: {response.status_code} - {response.text}"
+                task.fail(error_message)
+                AITaskLog.objects.create(
+                    task=task,
+                    message=error_message,
+                    level='error'
+                )
+            else:
+                AITaskLog.objects.create(
+                    task=task,
+                    message="Запрос на создание команды оценки успешно отправлен",
+                    level='info'
+                )
+                
+        except Exception as e:
+            error_message = f"Ошибка при отправке запроса: {str(e)}"
+            task.fail(error_message)
+            AITaskLog.objects.create(
+                task=task,
+                message=error_message,
+                level='error'
+            )

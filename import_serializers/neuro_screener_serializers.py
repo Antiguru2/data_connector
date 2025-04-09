@@ -13,6 +13,10 @@ from talent_finder.models import Project, Candidate
 
 class CandidateImportSerializer(serializers.ModelSerializer): 
     title = serializers.CharField(source='resume_title')
+    name = serializers.CharField(source='candidat_full_name')
+    experience = serializers.CharField(source='experience_text')
+    ai_comment = serializers.CharField(source='comment')
+    resume_url = serializers.CharField(source='hh_url')
     project = serializers.PrimaryKeyRelatedField(
         queryset=Project.objects.all(),
     ) 
@@ -25,9 +29,12 @@ class CandidateImportSerializer(serializers.ModelSerializer):
             'project',
             'hh_resume_id',
             'title',
-            'hh_url',
+            'name',
+            'resume_url',
             'category',
+            'ai_comment',
             'comment',
+            'experience',
             'is_viewed',
             'is_analyzed',
             'is_analyzing',
@@ -37,7 +44,29 @@ class CandidateImportSerializer(serializers.ModelSerializer):
             'username',
             'interview_date',
             'salary',
+            'age',
+            'gender',
+            'area',
+            'contact_email',
+            'contact_phone',
+            'total_experience_years',
+            'experience_json',
         ]
+
+    def update(self, instance, validated_data):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"UPDATE CANDIDATE DATA: {validated_data}")
+        
+        if 'comment' in self.initial_data:
+            logger.info(f"DIRECT COMMENT UPDATE: {self.initial_data['comment']}")
+            instance.comment = self.initial_data['comment']
+        
+        if 'comment' in validated_data:
+            logger.info(f"COMMENT from validated_data: {validated_data['comment']}")
+            instance.comment = validated_data['comment']
+            
+        return super().update(instance, validated_data)
 
 
 # class ProjectImportSerializer(serializers.ModelSerializer):
