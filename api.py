@@ -3,6 +3,7 @@ import json
 from urllib.parse import unquote
 
 from django.views import View
+from django.http import JsonResponse
 from django.http.request import QueryDict
 from django.core.exceptions import FieldError
 from django.views.decorators.csrf import csrf_exempt
@@ -10,6 +11,7 @@ from django.contrib.contenttypes.models import ContentType
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
+
 from rest_framework import status, permissions
 
 from .models import (
@@ -22,6 +24,9 @@ class SuperApiView(APIView):
         # permissions.AllowAny, 
         permissions.IsAuthenticated, 
     ]
+
+    def get_object_data_type(self):
+        return 'dict'
 
     def get_some_model(self, natural_key, obj_id=None):
         try:
@@ -79,9 +84,6 @@ class SuperApiView(APIView):
 
             print('get_param_value', get_param_value)
 
-            if get_param_slug == 'form':
-                continue
-
             # Пробразуем спецефичные для QueryDict значения в валидные значения для objects.filter()
             if get_param_value in ['True', 'true', 'False', 'false']:
                 if get_param_value in ['True', 'true']:
@@ -116,22 +118,14 @@ class SuperApiView(APIView):
         
     def get(self, request, natural_key, serializer_name=None, obj_id=None):
         print('SuperApiView get')
-        # print('args', args)
-        print('GET', dict(request.GET))
-
-        # print('natural_key', natural_key)
-        # print('serializer_name', serializer_name)
-        # print('obj_id', obj_id)
 
         some_model = self.get_some_model(natural_key)
-        print('some_model', some_model)
         if not some_model:
             return Response({"status": "error", "message": "Нет модели с таким натуральным ключом"}, status=status.HTTP_404_NOT_FOUND)
         
         
         if obj_id:
             obj = self.get_object(some_model, obj_id)
-            print('obj', obj)
 
             if not obj:
                 return Response({"status": "error", "message": "Нет объекта с таким id"}, status=status.HTTP_404_NOT_FOUND)
@@ -142,18 +136,14 @@ class SuperApiView(APIView):
             return Response({"status": "error", "message": "Нет queryset"}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            serializer = DataConnector.get_serializer(some_model, serializer_name)
+            serializer = DataConnector.get_serializer(some_model, user=request.user, serializer_name=serializer_name)
         except:
             serializer = None
 
-        print('serializer', serializer)
         if not serializer:
             return Response({"status": "error", "message": "У модели нет сериализатора"}, status=status.HTTP_404_NOT_FOUND)
         
-        if 'form' in request.GET and obj_id:
-            data = serializer.get_form(queryset)
-        else:
-            data = serializer.get_data(queryset)
+        data = serializer.get_data(queryset, self.get_object_data_type())
 
         if not data:
             return Response({"status": "error", "message": "Нет данных"}, status=status.HTTP_404_NOT_FOUND)
@@ -166,13 +156,13 @@ class SuperApiView(APIView):
         print('request.data', request.data)
 
         if obj_id:   
-            return Response({"message": "Нельзя задать id для создаваемого обьекта"}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"message": "Нельзя задать id для создаваемого обьекта"}, status=status.HTTP_404_NOT_FOUND)
 
         request_data = self.get_request_data(request)
         print('request_data', request_data)
 
         if not request_data:
-            return Response({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
 
         # data = request_data.get('data')
         # if not data:
@@ -180,7 +170,7 @@ class SuperApiView(APIView):
 
         some_model = self.get_some_model(natural_key)
         if not some_model:
-            return Response({"message": "Нет модели с таким натуральным ключом"}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"message": "Нет модели с таким натуральным ключом"}, status=status.HTTP_404_NOT_FOUND)
 
         serializer_self_assembly_data = None
         if type(request_data) == dict:
@@ -189,19 +179,20 @@ class SuperApiView(APIView):
         try:
             serializer = DataConnector.get_serializer(
                 some_model,
-                'POST',
-                serializer_name, 
-                serializer_self_assembly_data,
+                user=request.user,
+                method='POST',
+                serializer_name=serializer_name, 
+                serializer_self_assembly_data=serializer_self_assembly_data,
             )
         except:
             serializer = None
 
         if not serializer:
-            return Response({"message": "Сериализатор не найден"}, status=status.HTTP_404_NOT_FOUND)       
+            return JsonResponse({"message": "Сериализатор не найден"}, status=status.HTTP_404_NOT_FOUND)       
 
         comment, response_status, response_data = serializer.set_data(request_data, method='POST') 
 
-        return Response(
+        return JsonResponse(
             {
                 "message": comment,
                 "data": response_data,
@@ -214,13 +205,13 @@ class SuperApiView(APIView):
         print('SuperApiView.patch()')
 
         if not obj_id:   
-            return Response({"message": "В url не задан id для обновляемого обьекта"}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"message": "В url не задан id для обновляемого обьекта"}, status=status.HTTP_404_NOT_FOUND)
 
         request_data = self.get_request_data(request)
         print('request_data', request_data)
 
         if not request_data:
-            return Response({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
 
         # data = request_data.get('data')
         # if not data:
@@ -228,7 +219,7 @@ class SuperApiView(APIView):
 
         some_model = self.get_some_model(natural_key)
         if not some_model:
-            return Response({"message": "Нет модели с таким натуральным ключом"}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"message": "Нет модели с таким натуральным ключом"}, status=status.HTTP_404_NOT_FOUND)
 
         serializer_self_assembly_data = None
         if type(request_data) == dict:
@@ -237,19 +228,20 @@ class SuperApiView(APIView):
         try:
             serializer = DataConnector.get_serializer(
                 some_model,
-                'PATCH',
-                serializer_name, 
-                serializer_self_assembly_data,
+                user=request.user,
+                method='PATCH',
+                serializer_name=serializer_name, 
+                serializer_self_assembly_data=serializer_self_assembly_data,
             )
         except:
             serializer = None
 
         if not serializer:
-            return Response({"message": "Сериализатор не найден"}, status=status.HTTP_404_NOT_FOUND)       
+            return JsonResponse({"message": "Сериализатор не найден"}, status=status.HTTP_404_NOT_FOUND)       
 
         comment, response_status, response_data = serializer.set_data(request_data, method='PATCH', obj_id=obj_id) 
 
-        return Response(
+        return JsonResponse(
             {
                 "message": comment,
                 "data": response_data,
@@ -258,8 +250,13 @@ class SuperApiView(APIView):
         )
     
     def put(self, request, natural_key, serializer_name=None, obj_id=None):
-        return Response({"message": "ok"}, status=status.HTTP_200_OK)
+        return JsonResponse({"message": "ok"}, status=status.HTTP_200_OK)
     
     def delete(self, request, natural_key, obj_id=None):
-        return Response({"message": "ok"}, status=status.HTTP_200_OK)
+        return JsonResponse({"message": "ok"}, status=status.HTTP_200_OK)
     
+
+class SuperApiFormView(SuperApiView):
+
+    def get_object_data_type(self):
+        return 'list'

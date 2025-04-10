@@ -3,22 +3,6 @@ from django.contrib import admin
 from .models import *
 
 
-@admin.register(FieldHandler)
-class FieldHandlerAdmin(admin.ModelAdmin):
-    prepopulated_fields = {'slug': ('name',), }
-    search_fields = [
-        'id',
-        'name',
-    ]
-
-@admin.register(FormFieldHandler)
-class FormFieldHandlerAdmin(admin.ModelAdmin):
-    search_fields = [
-        'id',
-        'name',
-    ]
-
-
 @admin.register(SerializerField)
 class SerializerFieldAdmin(admin.ModelAdmin):
     search_fields = [
@@ -74,7 +58,6 @@ class DataConnectorAdmin(admin.ModelAdmin):
                     'is_allow_delete',
                     'is_allow_create',                    
                 ),
-                'is_allow_form',
             )
         }),
         ('Дополнительное', {

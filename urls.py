@@ -14,6 +14,25 @@ except ImportError:
 urlpatterns = [
     path('api/', include(router.urls)),
 
+    # form
+    path(
+        'super-api/form/<str:natural_key>/',
+        api.SuperApiFormView.as_view(),
+    ),
+    path(
+        'super-api/form/<str:natural_key>/<int:obj_id>/',
+        api.SuperApiFormView.as_view(),
+    ),
+    path(
+        'super-api/form/<str:natural_key>/<str:serializer_name>/',
+        api.SuperApiFormView.as_view(),
+    ),
+    path(
+        'super-api/form/<str:natural_key>/<str:serializer_name>/<int:obj_id>/',
+        api.SuperApiFormView.as_view(),
+    ),
+
+    # data
     path(
         'super-api/<str:natural_key>/',
         api.SuperApiView.as_view(),
@@ -30,4 +49,5 @@ urlpatterns = [
         'super-api/<str:natural_key>/<str:serializer_name>/<int:obj_id>/',
         api.SuperApiView.as_view(),
     ),
+
 ]
