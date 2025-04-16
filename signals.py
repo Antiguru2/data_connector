@@ -84,23 +84,26 @@ def create_serializer_fields(sender: DataConnector, instance: DataConnector, cre
             except AttributeError:
                 if model_field.name == 'related_object':
                     field_type = 'GenericRelation'
-            try:
-                if field_type == 'AutoField':
-                    field_type = 'default'
-                handler, created = FieldHandler.objects.get_or_create(
-                    name=field_type,
-                    slug=field_type,
-                )
-            except:
-                handler = None           
 
-            # print('dir(model_field)', dir(model_field))
+            related_model = None
+            serializer_field_name = model_field.name
 
-            serializer_field = SerializerField.objects.create(
+            if field_type in ('ForeignKey', 'ManyToManyField', 'OneToOneField', 'GenericRelation'):
+                if hasattr(model_field, 'related_name') and model_field.related_name:
+                    serializer_field_name = model_field.related_name
+                else:
+                    serializer_field_name = f'{model_field.name}_set'
+
+                # Для структуы
+                if hasattr(model_field, 'related_model') and model_field.related_model:
+                    related_model = model_field.related_model
+
+
+            print('related_model', related_model)
+            serializer_field = instance.get_serializer_fields_class().objects.create(
                 data_connector=instance,
-                name=verbose_name,
-                slug=model_field.name,
-                handler=handler,
+                verbose_name=verbose_name,
+                name=serializer_field_name,
                 type=field_type,
             )
             

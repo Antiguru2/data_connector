@@ -8,7 +8,20 @@ class SerializerFieldAdmin(admin.ModelAdmin):
     search_fields = [
         'id',
         'name',
+        'verbose_name',
     ]
+    list_display = [
+        '__str__',
+        'verbose_name',
+        'type',
+        'is_active',
+    ]
+    list_filter = [
+        'data_connector',
+        'is_active',
+        'type',
+    ]
+    
 
 
 class SerializerFieldInline(

@@ -114,16 +114,16 @@ class DataConnectorTestCase(TestCase):
         data = response.json().get('data')
         default_fields = ['id', 'char_field', 'integer_field', 'float_field', 'boolean_field', 'text_field']
         for field in data:
-            if field.get('slug') in default_fields:
-                self.assertEqual(field.get('value'), getattr(self.main_model, field.get('slug')))
+            if field.get('name') in default_fields:
+                self.assertEqual(field.get('value'), getattr(self.main_model, field.get('name')))
 
-            elif field.get('slug') == 'one_to_one_model':
+            elif field.get('name') == 'one_to_one_model':
                 self.assertEqual(field.get('value'), self.main_model.one_to_one_model.id)
 
-            elif field.get('slug') == 'for_in_key_model':
+            elif field.get('name') == 'for_in_key_model':
                 self.assertEqual(field.get('value'), self.main_model.for_in_key_model.id)
 
-            elif field.get('slug') == 'many_to_many_models':
+            elif field.get('name') == 'many_to_many_models':
                 self.assertEqual(field.get('value'), [model.id for model in self.main_model.many_to_many_models.all()])
 
             else:

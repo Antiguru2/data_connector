@@ -115,9 +115,21 @@ class SuperApiView(APIView):
                 pass
         print('django_filter', django_filter)
         return django_filter
+    
+    def get_arg(self, arg):
+        if arg in ['none', 0]:
+            arg = None
+        return arg
         
-    def get(self, request, natural_key, serializer_name=None, obj_id=None):
+    def get(self, request, natural_key, obj_id=None, data_type='rest', serializer_name=None): 
         print('SuperApiView get')
+        obj_id = self.get_arg(obj_id)
+        serializer_name = self.get_arg(serializer_name)
+
+        data_type = self.get_arg(data_type)
+        if data_type and data_type not in ['rest', 'form'] :
+            return Response({"status": "error", "message": "Такой тип данных не обрабатывается, используйте 'rest' или 'form'"}, status=status.HTTP_404_NOT_FOUND)
+
 
         some_model = self.get_some_model(natural_key)
         if not some_model:
@@ -136,14 +148,14 @@ class SuperApiView(APIView):
             return Response({"status": "error", "message": "Нет queryset"}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            serializer = DataConnector.get_serializer(some_model, user=request.user, serializer_name=serializer_name)
+            serializer = DataConnector.get_serializer(some_model, user=request.user, data_type=data_type, serializer_name=serializer_name)
         except:
             serializer = None
 
         if not serializer:
             return Response({"status": "error", "message": "У модели нет сериализатора"}, status=status.HTTP_404_NOT_FOUND)
         
-        data = serializer.get_data(queryset, self.get_object_data_type())
+        data = serializer.get_data(queryset)
 
         if not data:
             return Response({"status": "error", "message": "Нет данных"}, status=status.HTTP_404_NOT_FOUND)
@@ -255,8 +267,32 @@ class SuperApiView(APIView):
     def delete(self, request, natural_key, obj_id=None):
         return JsonResponse({"message": "ok"}, status=status.HTTP_200_OK)
     
+    def options(self, request, natural_key, serializer_name=None):
+        """
+        Возвращает структуру сериализатора с пустыми значениями.
+        """
+        some_model = self.get_some_model(natural_key)
+        if not some_model:
+            return Response({"status": "error", "message": "Нет модели с таким натуральным ключом"}, status=status.HTTP_404_NOT_FOUND)
 
-class SuperApiFormView(SuperApiView):
+        try:
+            serializer = DataConnector.get_serializer(
+                some_model,
+                user=request.user,
+                serializer_name=serializer_name
+            )
+        except:
+            serializer = None
 
-    def get_object_data_type(self):
-        return 'list'
+        if not serializer:
+            return Response({"status": "error", "message": "У модели нет сериализатора"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Получаем структуру с пустыми значениями
+        structure = serializer.get_structure()
+
+        return Response({
+            "status": "ok",
+            "message": "",
+            "data": structure
+        }, status=status.HTTP_200_OK)
+
