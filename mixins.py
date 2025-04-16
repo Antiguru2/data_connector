@@ -140,10 +140,16 @@ class DataConnectorMixin:
             serializer = cls.get_self_assembly(serializer_self_assembly_data)
         else:
             content_type = ContentType.objects.get_for_model(some_model)
-            serializers = cls.objects.filter(content_type=content_type)
+            serializers = cls.objects.filter(
+                content_type=content_type,
+                is_active=True,
+            )
             
             if serializer_name:
-                serializers = serializers.filter(name=serializer_name)
+                serializer = serializers.get(name=serializer_name)
+
+            if not serializer and serializers.exists():
+                serializer = serializers.first()
 
         if serializer and not serializer.is_active:
             serializer = None
@@ -166,6 +172,7 @@ class DataConnectorMixin:
         serializer.user = user
         serializer.data_type = data_type
 
+        # print('serializer', serializer)
         return serializer
 
     def set_data(self, request_data: dict, method: str, obj_id: Optional[int] = None):
@@ -392,6 +399,8 @@ class DataConnectorMixin:
             serializer_fields = self.serializer_fields.filter(is_active=True).all()
             return serializer_fields
         except Exception as error:
+            print('error', error)
+            # traceback.print_exc()
             serializer_fields = []
 
         model = self.content_type.model_class()
