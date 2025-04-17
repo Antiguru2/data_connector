@@ -99,6 +99,26 @@ class ProjectsModelViewSet(ModelViewSet):
     # def update(self, request, *args, **kwargs):
     #     return super().update(request, *args, **kwargs)
     
+    @action(detail=True, methods=['post'], url_path='clear_search_rows')
+    def clear_search_rows(self, request, pk=None):
+        """
+        Удаляет все поисковые строки для указанного проекта.
+        Возвращает количество удаленных строк.
+        """
+        try:
+            project = self.get_object()
+            count = project.search_rows.all().delete()[0]
+            return Response({
+                'status': 'success',
+                'message': f'Удалено {count} поисковых строк',
+                'count': count
+            })
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
     @action(detail=True, methods=['get'], url_path='statistics')
     def get_project_statistics(self, request, pk=None):
         """
@@ -817,11 +837,21 @@ class AITaskModelViewSet(
             
             # Создаем новые поисковые строки
             for row_data in search_rows_data:
+                # Проверяем наличие необходимых полей или их эквивалентов с префиксом text.
+                text = row_data.get('text', '')
+                logic = row_data.get('logic', row_data.get('text.logic', 'any'))
+                field = row_data.get('field', row_data.get('text.field', 'all'))
+                period = row_data.get('period', row_data.get('text.period', 'all_time'))
+                
+                # Для полей, которые могут быть списками (например, field)
+                if not isinstance(field, str):
+                    field = 'all'
+                
                 project.search_rows.create(
-                    text=row_data['text'],
-                    logic=row_data.get('logic', 'any'),
-                    field=row_data.get('field', 'all'),
-                    period=row_data.get('period')
+                    text=text,
+                    logic=logic,
+                    field=field,
+                    period=period
                 )
             
             AITaskLog.objects.create(
