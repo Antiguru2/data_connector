@@ -1,0 +1,84 @@
+<style>
+    .data_connector_menu {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        margin: 20px 0;
+    }
+    .data_connector_buttons {
+        display: flex;
+        gap: 10px;
+    }
+    .data_connector_button {
+        border: 1px solid black;
+        border-radius: 5px;
+        padding: 5px 10px;
+        text-decoration: none;
+        color: black;
+    }
+    .data_connector_button:hover {
+        background-color: #f0f0f0;
+    }
+    .data_connector_list {
+        margin-top: 10px;
+    }
+    .data_connector_item {
+        margin: 5px;
+        padding: 5px;
+    }
+    .section_title {
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    .section_description {
+        color: #666;
+        font-size: 0.9em;
+        margin-bottom: 10px;
+    }
+</style>
+
+<div id="data_connector_menu" class="data_connector_menu">
+    <div>
+        <div class="section_title">Обработчики по умолчанию:</div>
+        <div class="section_description">
+            Используются для стандартной обработки данных
+        </div>
+        <a href="{{ default_list_url }}" class="data_connector_button">
+            📋 К данным всех экземпляров
+        </a>
+        {% if default_url %}
+            <a href="{{ default_url }}" class="data_connector_button">
+                🔍 К данным текущего экземпляра
+            </a>
+        {% endif %}
+    </div>
+    
+    <div class="data_connector_list">
+        <div class="section_title">Уникальные сериализаторы:</div>
+        <div class="section_description">
+            Специальные обработчики для конкретных случаев сериализации данных
+        </div>
+        <div class="data_connector_item">
+            <a href="{{ create_new_data_connector_url }}" class="data_connector_button">
+                ➕ Создать особый обработчик
+            </a>
+        </div>
+        {% for connector_data in data_connectors %}
+            <div class="data_connector_item">
+                <span>
+                    Настроить обработчик для:
+                </span>
+                <a href="{{ connector_data.get_admin_url }}" class="data_connector_button">
+                    {{ connector_data.connector.name|default:"Без названия" }}
+                </a>
+                <a href="{{ connector_data.list_url }}" class="data_connector_button">
+                    📋 К данным всех экземпляров
+                </a>
+                <a href="{{ connector_data.obj_url }}" class="data_connector_button">
+                    🔍 К данным текущего экземпляра
+                </a>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+

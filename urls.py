@@ -28,7 +28,7 @@ urlpatterns = [
         api.SuperApiView.as_view(),
     ),
     path(
-        'super-api/<str:natural_key>/<int:obj_id>/<int:data_type>/<str:serializer_name>/',
+        'super-api/<str:natural_key>/<int:obj_id>/<str:data_type>/<str:serializer_name>/',
         api.SuperApiView.as_view(),
     ),
 

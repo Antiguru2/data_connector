@@ -1,10 +1,63 @@
+import os
+
 from django.contrib import admin
+from django.conf import settings
+from django.template.loader import render_to_string
 
 from .models import *
 
+BASE_DIR = settings.BASE_DIR
+
+class AdminModelWithDataConnectorMenu(admin.ModelAdmin):
+    readonly_fields = []
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly_fields = super().get_readonly_fields(request, obj)
+        if 'data_connector_menu' not in readonly_fields:
+            readonly_fields.append('data_connector_menu')
+        return readonly_fields
+    
+    def get_fields(self, request, obj=None):
+        fields = super().get_fields(request, obj)
+        if 'data_connector_menu' not in fields:
+            fields.append('data_connector_menu')
+        return fields
+    
+    @admin.display(description="Коннектор данных 💾🔄")
+    def data_connector_menu(self, obj):
+        some_content_type = ContentType.objects.get_for_model(obj)
+        default_list_url = f'/data_connector/super-api/{some_content_type.app_label}__{some_content_type.model.lower()}/'
+        context = {
+            'default_list_url': default_list_url,
+        }  
+        if obj.id:
+            context['default_url'] = f'{default_list_url}{obj.id}/'
+
+        data_connectors = DataConnector.objects.filter(content_type=some_content_type)
+        data_connectors_list = []
+        for connector in data_connectors:
+            data_connectors_list.append({
+                'list_url': f'{default_list_url}0/none/{connector.slug}/',
+                'obj_url': f'{default_list_url}0/none/{connector.slug}/{obj.id}/',
+                'connector': connector,
+            })
+        context['data_connectors'] = data_connectors_list
+
+        context['create_new_data_connector_url'] = DataConnector.get_admin_create_url({
+            'content_type': some_content_type.id,
+            'name': obj._meta.verbose_name,
+        })
+
+        template_path = os.path.join(
+            BASE_DIR, 
+            'data_connector/templates', 
+            'custom_admin/data_connector_menu.html'
+        )
+
+        return render_to_string(template_path, context)
 
 @admin.register(SerializerField)
-class SerializerFieldAdmin(admin.ModelAdmin):
+class SerializerFieldAdmin(AdminModelWithDataConnectorMenu):
     search_fields = [
         'id',
         'name',

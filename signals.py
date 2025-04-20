@@ -88,7 +88,10 @@ def create_serializer_fields(sender: DataConnector, instance: DataConnector, cre
             related_model = None
             serializer_field_name = model_field.name
 
-            if field_type in ('ForeignKey', 'ManyToManyField', 'OneToOneField', 'GenericRelation'):
+            print('field_type', field_type)
+            print('serializer_field_name', serializer_field_name)
+
+            if field_type in ('ManyToOneRel', 'GenericRelation'):
                 if hasattr(model_field, 'related_name') and model_field.related_name:
                     serializer_field_name = model_field.related_name
                 else:

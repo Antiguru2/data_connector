@@ -47,13 +47,18 @@ class SerializerFieldAbstractModel(DCNameAbstractModel):
         ('JSONField', 'JSONField'),
 
         ('FileField', 'FileField'),
-        
+        # related
         ('ForeignKey', 'ForeignKey'),
         ('ManyToManyField', 'ManyToManyField'),
+        ('ManyToOneRel', 'ManyToOneRel'),
         ('OneToOneField', 'OneToOneField'),
         ('GenericRelation', 'GenericRelation'),
         ('GenericForeignKey', 'GenericForeignKey'),
         ('serializer', 'serializer'),
+        # unique
+        ('cargo_calc__route', 'cargo_calc__route'),
+        ('cargo_calc__services', 'cargo_calc__services'),
+        ('cargo_calc__prices', 'cargo_calc__prices'),
     )
 
     verbose_name = models.CharField(

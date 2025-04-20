@@ -33,9 +33,9 @@ class SuperApiView(APIView):
             separator = '__' if '__' in natural_key else '.'
             content_type = ContentType.objects.get_by_natural_key(*natural_key.split(separator))
             some_model = content_type.model_class()
-            print('type some_model', type(some_model))
-            print('get_some_model some_model', some_model)
-            print('get_some_model some_model.__class__.__name__', some_model.__name__)
+            # print('type some_model', type(some_model))
+            # print('get_some_model some_model', some_model)
+            # print('get_some_model some_model.__class__.__name__', some_model.__name__)
         except:
             some_model = None
 
@@ -49,8 +49,8 @@ class SuperApiView(APIView):
         return some_model.objects.filter(id=obj_id).first()
     
     def get_queryset(self, some_model, obj_id=None, get_params={}):
-        print('SuperApiView get_queryset')
-        print('get_params', get_params)
+        # print('SuperApiView get_queryset')
+        # print('get_params', get_params)
 
         if obj_id:
             return some_model.objects.filter(id=obj_id)
@@ -60,7 +60,7 @@ class SuperApiView(APIView):
             return some_model.objects.all()
         
     def get_request_data(self, request):
-        print('get_request_data')
+        # print('get_request_data')
         request_data = {}
         if request.body:
             request_data = json.loads(request.body)
@@ -71,7 +71,7 @@ class SuperApiView(APIView):
         if not request_data and request.POST:
             request_data = request.POST
         
-        print('request_data', request_data)
+        # print('request_data', request_data)
         return request_data
 
     def get_django_filter(self, get_params: QueryDict) -> dict:
@@ -82,7 +82,7 @@ class SuperApiView(APIView):
 
         for get_param_slug, get_param_value in get_params.items():
 
-            print('get_param_value', get_param_value)
+            # print('get_param_value', get_param_value)
 
             # Пробразуем спецефичные для QueryDict значения в валидные значения для objects.filter()
             if get_param_value in ['True', 'true', 'False', 'false']:
@@ -91,7 +91,7 @@ class SuperApiView(APIView):
                 else:
                     get_param_value = False
             else:
-                print('get_param_value', get_param_value)
+                # print('get_param_value', get_param_value)
                 if ',' in get_param_value:
                     get_params_value = get_param_value.split(',')
                     get_param_value = []
@@ -113,7 +113,7 @@ class SuperApiView(APIView):
                 pass
             except FieldError:
                 pass
-        print('django_filter', django_filter)
+        # print('django_filter', django_filter)
         return django_filter
     
     def get_arg(self, arg):
@@ -122,14 +122,13 @@ class SuperApiView(APIView):
         return arg
         
     def get(self, request, natural_key, obj_id=None, data_type='rest', serializer_name=None): 
-        print('SuperApiView get')
+        # print('SuperApiView get')
         obj_id = self.get_arg(obj_id)
         serializer_name = self.get_arg(serializer_name)
 
         data_type = self.get_arg(data_type)
         if data_type and data_type not in ['rest', 'form'] :
             return Response({"status": "error", "message": "Такой тип данных не обрабатывается, используйте 'rest' или 'form'"}, status=status.HTTP_404_NOT_FOUND)
-
 
         some_model = self.get_some_model(natural_key)
         if not some_model:
@@ -149,6 +148,8 @@ class SuperApiView(APIView):
 
         try:
             serializer = DataConnector.get_serializer(some_model, user=request.user, data_type=data_type, serializer_name=serializer_name)
+            # print('serializer', serializer)
+            # print('serializer.data_type', serializer.data_type)
         except:
             serializer = None
 
@@ -164,14 +165,14 @@ class SuperApiView(APIView):
     
     # @csrf_exempt
     def post(self, request, natural_key, serializer_name=None, obj_id=None):
-        print('post')
-        print('request.data', request.data)
+        # print('post')
+        # print('request.data', request.data)
 
         if obj_id:   
             return JsonResponse({"message": "Нельзя задать id для создаваемого обьекта"}, status=status.HTTP_404_NOT_FOUND)
 
         request_data = self.get_request_data(request)
-        print('request_data', request_data)
+        # print('request_data', request_data)
 
         if not request_data:
             return JsonResponse({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)
@@ -214,13 +215,13 @@ class SuperApiView(APIView):
     
 
     def patch(self, request, natural_key, serializer_name=None, obj_id=None):
-        print('SuperApiView.patch()')
+        # print('SuperApiView.patch()')
 
         if not obj_id:   
             return JsonResponse({"message": "В url не задан id для обновляемого обьекта"}, status=status.HTTP_404_NOT_FOUND)
 
         request_data = self.get_request_data(request)
-        print('request_data', request_data)
+        # print('request_data', request_data)
 
         if not request_data:
             return JsonResponse({"message": "Данные не найдены"}, status=status.HTTP_404_NOT_FOUND)

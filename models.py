@@ -12,6 +12,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
 
 from .submodules.base_content_objects.abstract_models import BaseContentObject
+from .submodules.base_content_objects.mixins import AdminChangeButtonMixin
 from data_connector.abstract_models import (
     SerializerFieldAbstractModel,
     DataConnectorAbstractModel,
@@ -91,7 +92,11 @@ class SerializerField(
         verbose_name_plural = _('Поля сериализатора')
     
 
-class DataConnector(DataConnectorAbstractModel, DataConnectorMixin):
+class DataConnector(
+    DataConnectorAbstractModel, 
+    DataConnectorMixin,
+    AdminChangeButtonMixin,
+):
     """
     Класс для настройки сериализации данных.
     
@@ -368,7 +373,6 @@ class ContentsTestModel(models.Model):
         abstract = True
 
 
-
 class MainTestModel(ContentsTestModel):
     """
     Основная тестовая модель для тестирования API.
@@ -406,7 +410,6 @@ class ForInKeyModel(ContentsTestModel):
     class Meta:
         verbose_name = 'Модель с внешним ключом'
         verbose_name_plural = 'Модели с внешними ключами'
-
 
 
 class ManyToManyModel(ContentsTestModel):
