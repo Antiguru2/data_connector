@@ -3,6 +3,7 @@ import json
 from django.urls import reverse
 from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
 
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -586,8 +587,11 @@ class AITaskModelViewSet(
         Используется для обратного вызова из n8n.
         """
         task = self.get_object()
+        import logging
+        logger = logging.getLogger(__name__)
         
-        # Добавляем логирование входящих данных для отладки
+        # Добавляем подробное логирование входящих данных для отладки
+        logger.info(f"[DEBUG] Получены данные для complete_task задачи {task.id}: {request.data}")
         AITaskLog.objects.create(
             task=task,
             message=f"Получены данные от n8n: {request.data}",
@@ -599,35 +603,100 @@ class AITaskModelViewSet(
             result_data = request.data.get('result_data')
             search_rows_data = request.data.get('search_rows')
             
+            logger.info(f"[DEBUG] result_data type: {type(result_data)}, значение: {result_data}")
+            
             # Если это задача создания команды оценки
             if task.task_type == AITask.TASK_TYPE_EVALUATORS_TEAM_CREATION:
+                logger.info(f"[DEBUG] Обрабатываем задачу создания команды оценки {task.id}")
+                logger.info(f"[DEBUG] result_data is list: {isinstance(result_data, list)}")
+                
+                # Проверяем все доступные поля в запросе
+                for key, value in request.data.items():
+                    logger.info(f"[DEBUG] Поле {key} в запросе: {value}")
+                    if key != 'result_data' and isinstance(value, list):
+                        logger.info(f"[DEBUG] Обнаружен список в поле {key}")
+                
+                # Проверяем различные варианты структуры данных
+                prompts_to_save = None
+                
                 if isinstance(result_data, list):
-                    task.project.json_prompts = result_data
+                    logger.info(f"[DEBUG] result_data это список, сохраняем его")
+                    prompts_to_save = result_data
+                elif isinstance(result_data, dict) and 'json_prompts' in result_data:
+                    logger.info(f"[DEBUG] json_prompts найден в result_data")
+                    prompts_to_save = result_data['json_prompts']
+                elif isinstance(result_data, dict) and 'prompts' in result_data:
+                    logger.info(f"[DEBUG] prompts найден в result_data")
+                    prompts_to_save = result_data['prompts']
+                elif 'json_prompts' in request.data:
+                    logger.info(f"[DEBUG] json_prompts найден в корне запроса")
+                    prompts_to_save = request.data['json_prompts']
+                elif 'prompts' in request.data:
+                    logger.info(f"[DEBUG] prompts найден в корне запроса")
+                    prompts_to_save = request.data['prompts']
+                
+                # Дополнительная проверка найденных промптов
+                if prompts_to_save:
+                    logger.info(f"[DEBUG] Найдены промпты для сохранения: {prompts_to_save}")
+                    
+                    # Сохраняем промпты в проект
+                    project_id = task.project.id
+                    task.project.json_prompts = prompts_to_save
                     task.project.save()
+                    
+                    logger.info(f"[DEBUG] Промпты сохранены в проект {task.project.id}")
+                    logger.info(f"[DEBUG] Проверка сохранения - промпты в проекте: {task.project.json_prompts}")
+                    
+                    # Получаем проект заново из БД для проверки сохранения
+                    from talent_finder.models import Project
+                    refreshed_project = Project.objects.get(id=project_id)
+                    logger.info(f"[DEBUG] Проект после перезагрузки из БД - id: {refreshed_project.id}")
+                    logger.info(f"[DEBUG] Промпты в проекте после перезагрузки из БД: {refreshed_project.json_prompts}")
+                    
+                    # Проверяем с помощью SQL
+                    from django.db import connection
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT json_prompts FROM talent_finder_project WHERE id = %s", [project_id])
+                        row = cursor.fetchone()
+                        logger.info(f"[DEBUG] Промпты в БД напрямую: {row[0]}")
+                    
                     AITaskLog.objects.create(
                         task=task,
-                        message=f"Промпты успешно сохранены в проект: {result_data}",
+                        message=f"Промпты успешно сохранены в проект: {prompts_to_save}",
                         level='success'
+                    )
+                else:
+                    logger.error(f"[DEBUG] Не удалось найти промпты для сохранения в проект")
+                    AITaskLog.objects.create(
+                        task=task,
+                        message="Не удалось найти промпты для сохранения в проект",
+                        level='error'
                     )
             
             # Если это задача генерации поисковых запросов
             elif task.task_type == AITask.TASK_TYPE_SEARCH_QUERY_GENERATION:
+                logger.info(f"[DEBUG] Обрабатываем задачу генерации поисковых запросов {task.id}")
                 # Проверяем наличие search_rows в разных местах
                 if search_rows_data:
+                    logger.info(f"[DEBUG] search_rows_data найдено в корне запроса")
                     self.save_search_rows(task.project, search_rows_data, task)
                 elif isinstance(result_data, dict) and 'search_rows' in result_data:
+                    logger.info(f"[DEBUG] search_rows найдено в result_data")
                     self.save_search_rows(task.project, result_data['search_rows'], task)
                 elif isinstance(result_data, list) and len(result_data) > 0 and isinstance(result_data[0], dict) and 'search_rows' in result_data[0]:
+                    logger.info(f"[DEBUG] search_rows найдено в первом элементе списка result_data")
                     self.save_search_rows(task.project, result_data[0]['search_rows'], task)
                 else:
+                    logger.error(f"[DEBUG] Не найдены данные search_rows в запросе")
                     AITaskLog.objects.create(
                         task=task,
                         message="Не найдены данные search_rows в запросе",
                         level='warning'
                     )
-                    
+                
         except Exception as e:
             error_message = f"Ошибка при обработке данных: {str(e)}"
+            logger.exception(f"[DEBUG] {error_message}")
             AITaskLog.objects.create(
                 task=task,
                 message=error_message,
@@ -637,6 +706,17 @@ class AITaskModelViewSet(
         
         # Отмечаем задачу как завершенную
         task.complete(result_data or {})
+        
+        # Проверяем, сохранились ли данные в проекте
+        if task.task_type == AITask.TASK_TYPE_EVALUATORS_TEAM_CREATION:
+            from talent_finder.models import Project
+            task.project.refresh_from_db()
+            logger.info(f"[DEBUG] После complete - промпты в проекте: {task.project.json_prompts}")
+            
+            # Еще одна проверка после complete
+            refreshed_project = Project.objects.get(id=task.project.id)
+            logger.info(f"[DEBUG] После complete - получили проект из БД: {refreshed_project.id}")
+            logger.info(f"[DEBUG] После complete - промпты в перезагруженном проекте: {refreshed_project.json_prompts}")
         
         # Создаем запись в логе
         AITaskLog.objects.create(
@@ -1060,76 +1140,6 @@ class AITaskModelViewSet(
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=False, methods=['post'], url_path='create-resume-analysis')
-    def create_resume_analysis(self, request):
-        """
-        Создает новую задачу для анализа резюме в указанном проекте.
-        
-        Параметры:
-        - project_id: ID проекта для анализа (обязательный)
-        - max_parallel_requests: Максимальное количество одновременно обрабатываемых резюме (по умолчанию 5)
-        - batch_size: Количество резюме, обрабатываемых за один запуск команды (по умолчанию 3)
-        """
-        # TODO: добавить получение параметров из настроек
-        project_id = request.data.get('project_id')
-        max_parallel_requests = request.data.get('max_parallel_requests', 10)
-        batch_size = request.data.get('batch_size', 5)
-        
-        if not project_id:
-            return Response(
-                {"error": "Project ID is required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        try:
-            project = Project.objects.get(id=project_id)
-        except Project.DoesNotExist:
-            return Response(
-                {"error": f"Project with ID {project_id} not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Проверяем, есть ли неанализированные кандидаты в проекте
-        candidates_count = project.candidates.filter(is_analyzed=False).count()
-        if candidates_count == 0:
-            return Response(
-                {"error": "No candidates to analyze in this project"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-        # Создаем новую задачу
-        serializer = self.get_serializer(data={
-            'project': project_id,
-            'task_type': AITask.TASK_TYPE_RESUME_ANALYSIS,
-            'status': AITask.STATUS_PENDING,
-            'message': f"Задача на анализ {candidates_count} резюме создана",
-            'result_data': {
-                'total_candidates': candidates_count,
-                'analyzed_candidates': 0,
-                'max_parallel_requests': max_parallel_requests,
-                'batch_size': batch_size
-            }
-        })
-        
-        serializer.is_valid(raise_exception=True)
-        task = serializer.save()
-        
-        # Обновляем статус проекта
-        project.status = Project.STATUS_AI_RESUME_ANALYSIS
-        project.save()
-        
-        # Создаем запись в логе
-        AITaskLog.objects.create(
-            task=task,
-            message=f"Создана задача анализа резюме для проекта {project.name}. "
-                    f"Всего кандидатов: {candidates_count}, "
-                    f"Макс. параллельных запросов: {max_parallel_requests}, "
-                    f"Размер пакета: {batch_size}",
-            level='info'
-        )
-        
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
     @action(detail=False, methods=['get'], url_path='analysis-status-for-project/(?P<project_id>[^/.]+)')
     def get_analysis_task_status_for_project(self, request, project_id=None):
         """
@@ -1447,6 +1457,7 @@ class AITaskModelViewSet(
         """
         Запуск задачи анализа резюме для проекта
         """
+        
         try:
             # Проверяем, есть ли уже активная задача анализа резюме для проекта
             active_task = self.queryset.filter(
@@ -1490,83 +1501,79 @@ class AITaskModelViewSet(
         except Exception as e:
             return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    def start_evaluators_team_creation(self, task, project):
-        """
-        Запускает процесс создания команды оценки через n8n.
-        """
-        # URL для обратного вызова
-        base_url = settings.BASE_URL if hasattr(settings, 'BASE_URL') else 'http://localhost:8000'
-        callback_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/update-progress/"
-        complete_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/complete/"
-        fail_url = f"{base_url}{reverse('api-root')}ai_tasks/{task.id}/fail/"
-        
-        # Получаем поисковые критерии проекта
-        search_criteria = project.search_criteria.first()
-        if not search_criteria:
-            error_message = "Не найдены поисковые критерии для проекта"
-            task.fail(error_message)
-            AITaskLog.objects.create(
-                task=task,
-                message=error_message,
-                level='error'
-            )
-            return
-        
-        # Формируем данные для отправки в n8n
-        payload = {
-            'project_id': project.id,
-            'must_have': search_criteria.must_have,
-            'nice_to_have': search_criteria.nice_to_have,
-            'additional': search_criteria.additional,
-            'vacancy': project.name,
-            'task_id': str(task.id),
-            'callback_url': callback_url,
-            'complete_url': complete_url,
-            'fail_url': fail_url
-        }
-        
-        # URL вебхука n8n для создания команды оценки
-        n8n_webhook_url = 'https://n8n.innoprompt.ru/webhook/9b1bd856-b8a1-4357-b7fc-60cb3d387277'
-        
+    @action(detail=False, methods=['post'], url_path='create-evaluators/(?P<project_id>[^/.]+)')
+    def create_evaluators(self, request, project_id=None):
         try:
-            # Обновляем задачу - она начала выполняться
-            task.start()
+            project = Project.objects.get(id=project_id)
+            search_criteria = SearchCriteria.objects.filter(project=project).first()
             
-            # Создаем запись в логе
-            AITaskLog.objects.create(
-                task=task,
-                message=f"Отправка запроса на создание команды оценки в n8n",
-                level='info'
-            )
+            # Подготовка данных для запроса
+            payload = {
+                'project_id': project.id,
+                'must_have': search_criteria.must_have if search_criteria else '',
+                'nice_to_have': search_criteria.nice_to_have if search_criteria else '',
+                'additional': search_criteria.additional if search_criteria else '',
+                'vacancy': project.name,
+            }
             
-            # Отправляем запрос в n8n
+            # Отправка запроса к n8n
             response = requests.post(
-                n8n_webhook_url,
+                "https://n8n.innoprompt.ru/webhook/9b1bd856-b8a1-4357-b7fc-60cb3d387277",
                 json=payload,
-                headers={'Content-Type': 'application/json'}
             )
             
-            # Проверяем ответ
-            if response.status_code != 200:
-                error_message = f"Ошибка при отправке запроса в n8n: {response.status_code} - {response.text}"
-                task.fail(error_message)
-                AITaskLog.objects.create(
-                    task=task,
-                    message=error_message,
-                    level='error'
-                )
+            # Проверка ответа
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    prompts = None
+                    
+                    # Проверяем разные варианты ключей из-за возможной опечатки в API
+                    if 'prompts' in data:
+                        prompts = data['prompts']
+                    elif 'promprts' in data:
+                        prompts = data['promprts']
+                        
+                    if prompts:
+                        # Сохранение промптов в поле json_prompts проекта
+                        project.json_prompts = prompts
+                        project.save()
+                        
+                        # Обновление статуса проекта
+                        project.last_evaluators_update = timezone.now()
+                        project.save()
+                        
+                        return Response({
+                            'status': 'success',
+                            'message': 'Оценщики успешно созданы',
+                            'prompts_count': len(prompts)
+                        }, status=status.HTTP_200_OK)
+                    else:
+                        # Для отладки - логируем полный ответ
+                        print(f"Response data from n8n: {data}")
+                        return Response({
+                            'status': 'error',
+                            'message': 'В ответе отсутствуют промпты'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                except ValueError as ve:
+                    print(f"ValueError при обработке ответа: {str(ve)}")
+                    return Response({
+                        'status': 'error',
+                        'message': 'Ошибка при обработке ответа от сервера'
+                    }, status=status.HTTP_400_BAD_REQUEST)
             else:
-                AITaskLog.objects.create(
-                    task=task,
-                    message="Запрос на создание команды оценки успешно отправлен",
-                    level='info'
-                )
-                
+                return Response({
+                    'status': 'error',
+                    'message': f'Ошибка при обращении к API: {response.status_code}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Project.DoesNotExist:
+            return Response({
+                'status': 'error',
+                'message': 'Проект не найден'
+            }, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            error_message = f"Ошибка при отправке запроса: {str(e)}"
-            task.fail(error_message)
-            AITaskLog.objects.create(
-                task=task,
-                message=error_message,
-                level='error'
-            )
+            print(f"Exception в create_evaluators: {str(e)}")
+            return Response({
+                'status': 'error',
+                'message': f'Произошла ошибка: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
