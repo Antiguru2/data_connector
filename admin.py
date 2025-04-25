@@ -23,6 +23,16 @@ class AdminModelWithDataConnectorMenu(admin.ModelAdmin):
             fields.append('data_connector_menu')
         return fields
     
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if fieldsets and not any('data_connector_menu' in fieldset[1]['fields'] for fieldset in fieldsets):
+
+            fieldsets.append(('Меню коннекторов', {
+                'fields': ('data_connector_menu',),
+            }))   
+
+        return fieldsets  
+    
     @admin.display(description="Коннектор данных 💾🔄")
     def data_connector_menu(self, obj):
         some_content_type = ContentType.objects.get_for_model(obj)
@@ -38,7 +48,7 @@ class AdminModelWithDataConnectorMenu(admin.ModelAdmin):
         for connector in data_connectors:
             data_connectors_list.append({
                 'list_url': f'{default_list_url}0/none/{connector.slug}/',
-                'obj_url': f'{default_list_url}0/none/{connector.slug}/{obj.id}/',
+                'obj_url': f'{default_list_url}{obj.id}/none/{connector.slug}/',
                 'connector': connector,
             })
         context['data_connectors'] = data_connectors_list

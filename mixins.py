@@ -346,7 +346,7 @@ class DataConnectorMixin:
         serializer_fields = self.get_serializer_fields()
         for serializer_field in serializer_fields:
             structure_handler: StructureFieldHandler = serializer_field.get_structure_handler()
-            value = structure_handler.get_value(serializer_field)
+            value = structure_handler.get_value(serializer_field, additional_field_keys=additional_field_keys)
 
 
             field_data = {

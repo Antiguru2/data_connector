@@ -249,7 +249,7 @@ class StructureFieldHandler(Handler):
         Класс, инструкция для обработки поля.
     """
 
-    def get_value(self, serializer_field: models.Model):
+    def get_value(self, serializer_field: models.Model, additional_field_keys: list = []):
         value = ''
         # print('get_value')
         # print('self.name', self.name)
@@ -259,7 +259,7 @@ class StructureFieldHandler(Handler):
             if not serializer:
                 value = f'У поля сериализатора(SerializerField id={serializer_field.id}) не указан сериализатор'
             try:
-                structure_data = serializer.get_structure()
+                structure_data = serializer.get_structure(additional_field_keys=additional_field_keys)
                 if serializer_field.type == 'ManyToManyField':
                     structure_data = [structure_data]
                     
