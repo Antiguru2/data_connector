@@ -1,1 +1,222 @@
-[{"model": "data_connector.serializerfield", "pk": 1, "fields": {"name": "route_segments_from", "verbose_name": "route_segments_from", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "ForeignKey", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 2, "fields": {"name": "route_segments_to", "verbose_name": "route_segments_to", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "ForeignKey", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 3, "fields": {"name": "id", "verbose_name": "ID", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "AutoField", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 4, "fields": {"name": "name", "verbose_name": "Название", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "CharField", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 5, "fields": {"name": "unic_code", "verbose_name": "Уникальный код", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "CharField", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 6, "fields": {"name": "city", "verbose_name": "Город", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "ForeignKey", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 7, "fields": {"name": "location", "verbose_name": "Местоположение", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "CharField", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 8, "fields": {"name": "transport_types", "verbose_name": "Типы транспорта", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "ManyToManyField", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 9, "fields": {"name": "is_from_point", "verbose_name": "Является ли точкой отправки", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "AutoField", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 10, "fields": {"name": "is_to_point", "verbose_name": "Является ли точкой назначения", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "AutoField", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 19, "fields": {"name": "to_points", "verbose_name": "Пункты являющиеся точкой отправления", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "AutoField", "data_connector": 1, "serializer": null}}, {"model": "data_connector.serializerfield", "pk": 20, "fields": {"name": "from_points", "verbose_name": "Пункты являющиеся точкой назначения", "type_for_handler": null, "type_for_form_handler": null, "incoming_handler": null, "alt_key": null, "is_active": true, "type": "AutoField", "data_connector": 1, "serializer": null}}, {"model": "data_connector.dataconnector", "pk": 1, "fields": {"name": "Точка доставки для (search_routes)", "slug": "tochka-dostavki-dlya-search_routes", "description": "", "order": 0, "created": "2025-04-20T13:53:44.585Z", "modified": "2025-04-21T11:58:10.716Z", "is_publish": true, "content_type": 10, "is_active": true, "is_allow_view": true, "is_allow_edit": false, "is_allow_delete": false, "is_allow_create": false}}, {"model": "data_connector.remotesite", "pk": 1, "fields": {"main": true, "name": "base_store", "domain": "basestore.online"}}]
+[
+    {
+        "model": "data_connector.dataconnector",
+        "pk": 1,
+        "fields": {
+            "name": "Точка доставки для (search_routes)",
+            "slug": "tochka-dostavki-dlya-search_routes",
+            "description": "",
+            "order": 0,
+            "created": "2025-04-20T13:53:44.585Z",
+            "modified": "2025-04-21T11:58:10.716Z",
+            "is_publish": true,
+            "content_type": 10,
+            "is_active": true,
+            "is_allow_view": true,
+            "is_allow_edit": false,
+            "is_allow_delete": false,
+            "is_allow_create": false
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 1,
+        "fields": {
+            "name": "route_segments_from",
+            "verbose_name": "route_segments_from",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "ForeignKey",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 2,
+        "fields": {
+            "name": "route_segments_to",
+            "verbose_name": "route_segments_to",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "ForeignKey",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 3,
+        "fields": {
+            "name": "id",
+            "verbose_name": "ID",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "AutoField",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 4,
+        "fields": {
+            "name": "name",
+            "verbose_name": "Название",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "CharField",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 5,
+        "fields": {
+            "name": "unic_code",
+            "verbose_name": "Уникальный код",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "CharField",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 6,
+        "fields": {
+            "name": "city",
+            "verbose_name": "Город",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "ForeignKey",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 7,
+        "fields": {
+            "name": "location",
+            "verbose_name": "Местоположение",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "CharField",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 8,
+        "fields": {
+            "name": "transport_types",
+            "verbose_name": "Типы транспорта",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "ManyToManyField",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 9,
+        "fields": {
+            "name": "is_from_point",
+            "verbose_name": "Является ли точкой отправки",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "AutoField",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 10,
+        "fields": {
+            "name": "is_to_point",
+            "verbose_name": "Является ли точкой назначения",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "AutoField",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 19,
+        "fields": {
+            "name": "to_points",
+            "verbose_name": "Пункты являющиеся точкой отправления",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "AutoField",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.serializerfield",
+        "pk": 20,
+        "fields": {
+            "name": "from_points",
+            "verbose_name": "Пункты являющиеся точкой назначения",
+            "type_for_handler": null,
+            "type_for_form_handler": null,
+            "incoming_handler": null,
+            "alt_key": null,
+            "is_active": true,
+            "type": "AutoField",
+            "data_connector": 1,
+            "serializer": null
+        }
+    },
+    {
+        "model": "data_connector.remotesite",
+        "pk": 1,
+        "fields": {
+            "main": true,
+            "name": "base_store",
+            "domain": "basestore.online"
+        }
+    }
+]
