@@ -167,6 +167,7 @@ class IncomingFieldHandler(Handler):
 
         elif serializer_field.incoming_handler == 'cargo_calc__services':
             # print('!!!!!!!!!!!!!!!!!!!!!!!!  cargo_calc__services')
+            # print('self.some_model', self.some_model)
             for item in value:
                 service = serializer_field.serializer.deserialize(item, method='POST')
                 # print('service', service)
@@ -182,11 +183,12 @@ class IncomingFieldHandler(Handler):
             for item in value:
                 price = serializer_field.serializer.deserialize(item, method='POST')
                 # print('price', price)
+                # print('self.some_model', self.some_model)
                 if self.some_model:
-                    # print('self.some_model', self.some_model)
                     # price.related_object = self.some_model
                     price.content_type = ContentType.objects.get_for_model(self.some_model)
                     price.object_id = self.some_model.id
+                    price.name = 'price' if 'price' in serializer_field.name else serializer_field.name
                     price.save()
 
 
