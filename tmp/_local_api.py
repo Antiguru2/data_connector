@@ -40,6 +40,7 @@ from data_connector.export_serializers.neuro_screener_serializers import (
     AITaskSerializer,
 )
 from data_connector.import_serializers.neuro_screener_serializers import CandidateImportSerializer
+from billing.services import LimitService
 
 
 class IsStaffPermission(permissions.BasePermission):
@@ -88,12 +89,22 @@ class ProjectsModelViewSet(ModelViewSet):
         return Response(serializer.data)
     
     def create(self, request, *args, **kwargs):
+        # Проверяем возможность создания проекта
+        can_create, error_message = LimitService.can_create_project(request.user.id)
+        if not can_create:
+            return Response(
+                {"error": error_message}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         serializer = self.get_serializer(data=request.data)
-        
-        
         serializer.initial_data['created_by'] = request.user.id
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+
+        # Учитываем создание проекта в лимитах
+        LimitService.track_project_creation(request.user.id)
+
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     

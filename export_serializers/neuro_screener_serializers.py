@@ -291,6 +291,7 @@ class ProjectMetaDataSerializer(serializers.ModelSerializer):
             'employment_type',
             'experience',
             'comment',
+            'only_active_search',
         ]
 
 

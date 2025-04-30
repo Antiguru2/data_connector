@@ -51,6 +51,7 @@ class CandidateImportSerializer(serializers.ModelSerializer):
             'contact_phone',
             'total_experience_years',
             'experience_json',
+            'job_search_status',
         ]
 
     def update(self, instance, validated_data):
