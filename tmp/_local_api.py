@@ -1273,6 +1273,10 @@ class AITaskModelViewSet(
         try:
             # Находим кандидата
             candidate = Candidate.objects.get(id=candidate_id)
+            user_id = candidate.project.created_by_id
+            
+            # Проверяем, был ли кандидат уже проанализирован
+            was_analyzed = candidate.is_analyzed
             
             # Обновляем поля кандидата
             update_fields = {}
@@ -1291,6 +1295,30 @@ class AITaskModelViewSet(
                 setattr(candidate, field, value)
             candidate.save()
             
+            # Если кандидат был проанализирован в этом запросе, обновляем счетчик использования лимита
+            if not was_analyzed and candidate.is_analyzed:
+                # Импортируем функцию из talent_finder.management.commands.check_candidates
+                from talent_finder.management.commands.check_candidates import increment_resume_limit_usage, get_user_resume_limit_remaining
+                
+                # Обновляем счетчик использования лимита
+                increment_result = increment_resume_limit_usage(user_id)
+                AITaskLog.objects.create(
+                    task=task,
+                    message=f"Обновлен счетчик использования лимита резюме для пользователя {user_id}: {increment_result}",
+                    level='info'
+                )
+                
+                # Получаем оставшийся лимит пользователя
+                remaining_limit = get_user_resume_limit_remaining(user_id)
+                
+                # Если лимит исчерпан, добавляем предупреждение
+                if remaining_limit <= 0:
+                    AITaskLog.objects.create(
+                        task=task,
+                        message=f"Лимит резюме по тарифу для пользователя {user_id} исчерпан!",
+                        level='warning'
+                    )
+            
             # Обновляем счетчики в задаче
             result_data = task.result_data or {}
             analyzed_candidates = result_data.get('analyzed_candidates', 0) + 1
@@ -1300,12 +1328,22 @@ class AITaskModelViewSet(
             total_candidates = result_data.get('total_candidates', 1)
             progress = min(100, int(analyzed_candidates / total_candidates * 100))
             
+            # Добавляем информацию о лимитах в сообщение о прогрессе
+            progress_message = f"Обработано {analyzed_candidates} из {total_candidates} кандидатов"
+            
+            # Импортируем функцию только если еще не импортировали
+            if 'get_user_resume_limit_remaining' not in locals():
+                from talent_finder.management.commands.check_candidates import get_user_resume_limit_remaining
+                
+            remaining_limit = get_user_resume_limit_remaining(user_id)
+            if remaining_limit > 0:
+                progress_message += f". Осталось резюме в тарифе: {remaining_limit}"
+            else:
+                progress_message += ". Лимит резюме в тарифе исчерпан!"
+            
             # Обновляем задачу
             task.result_data = result_data
-            task.update_progress(
-                progress, 
-                f"Обработано {analyzed_candidates} из {total_candidates} кандидатов"
-            )
+            task.update_progress(progress, progress_message)
             
             # Создаем запись в логе
             AITaskLog.objects.create(
