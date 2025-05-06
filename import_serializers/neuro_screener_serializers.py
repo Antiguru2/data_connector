@@ -9,6 +9,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import InMemoryUploadedFile
 
 from talent_finder.models import Project, Candidate
+from talent_finder.management.commands.check_candidates import increment_resume_limit_usage
 
 
 class CandidateImportSerializer(serializers.ModelSerializer): 
@@ -59,6 +60,9 @@ class CandidateImportSerializer(serializers.ModelSerializer):
         logger = logging.getLogger(__name__)
         logger.info(f"UPDATE CANDIDATE DATA: {validated_data}")
         
+        # Проверяем, был ли кандидат проанализирован до обновления
+        was_analyzed = instance.is_analyzed
+        
         if 'comment' in self.initial_data:
             logger.info(f"DIRECT COMMENT UPDATE: {self.initial_data['comment']}")
             instance.comment = self.initial_data['comment']
@@ -66,8 +70,22 @@ class CandidateImportSerializer(serializers.ModelSerializer):
         if 'comment' in validated_data:
             logger.info(f"COMMENT from validated_data: {validated_data['comment']}")
             instance.comment = validated_data['comment']
+        
+        # Обновляем кандидата
+        updated_instance = super().update(instance, validated_data)
+        
+        # Проверяем, стал ли кандидат проанализированным после обновления
+        if not was_analyzed and updated_instance.is_analyzed:
+            logger.info(f"Кандидат {instance.id} был проанализирован, обновляем счетчик использования")
             
-        return super().update(instance, validated_data)
+            # Получаем ID пользователя, создавшего проект
+            user_id = instance.project.created_by_id
+            
+            # Обновляем счетчик использования лимита
+            increment_result = increment_resume_limit_usage(user_id)
+            logger.info(f"Результат обновления счетчика: {increment_result}")
+            
+        return updated_instance
 
 
 # class ProjectImportSerializer(serializers.ModelSerializer):
