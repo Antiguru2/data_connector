@@ -535,6 +535,13 @@ class Transmitter(models.Model):
     """
         Модель для передачи данных моделей через админку.
     """
+    METHOD_CHOICES = (
+        ('post', 'POST'),
+        ('get', 'GET'),
+        ('put', 'PUT'),
+        ('path', 'PATH'),
+        ('delete', 'DELETE'),
+    )
     ACTIONS_CHOICES = (
         ('send', 'Передать'),
         ('receive', 'Получить'),
@@ -553,6 +560,12 @@ class Transmitter(models.Model):
         default='receive',
         verbose_name='Действие',
     )
+    method = models.CharField(
+        max_length=255, 
+        choices=METHOD_CHOICES, 
+        default='get',
+        verbose_name='Метод',
+    )
     mod = models.CharField(
         max_length=255, 
         choices=MODES_CHOICES, 
@@ -565,9 +578,11 @@ class Transmitter(models.Model):
         on_delete=models.CASCADE, 
         verbose_name=DataConnector._meta.verbose_name,
     )
-    model_id = models.PositiveIntegerField(
+    model_ids = models.CharField(
+        max_length=255,
         blank=True, null=True,
-        verbose_name="ID модели",
+        verbose_name="ID моделей",
+        help_text="1,2,4,5",
     )
     filter = models.JSONField(
         default=dict, blank=True,
@@ -620,8 +635,9 @@ class Transmitter(models.Model):
 
         if execute:
             SomeModel: models.Model = self.serializer.content_type.model_class()
-            if self.model_id:
-                queryset = SomeModel.objects.filter(id=self.model_id)
+            if self.model_ids:
+                models_ids_list = self.model_ids.split(',')
+                queryset = SomeModel.objects.filter(id__in=models_ids_list)
 
             elif self.filter:
                 queryset = SomeModel.objects.filter(**self.filter)
@@ -629,11 +645,22 @@ class Transmitter(models.Model):
             else:
                 queryset = SomeModel.objects.all()
 
+            # print('===============queryset', queryset)
+
             if self.action == 'send':
+
+                if self.method == 'get':
+                    TransmitterLog.objects.create(
+                        transmitter=self,
+                        status='failure',
+                        result='Нельзя отправить данные при self.method == GET',
+                    )
+                    return
+
                 serializer_data = self.serializer.serialize(queryset)
                 headers = {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Token 1f1fee896c312a8d81b307fba57cbc6ffdc69b07'
+                    'Authorization': 'Token e37c658100769f79b4f9cc347265060651b3a9e6'
                 }
                 print('serializer_data', serializer_data)
                 print('headers', headers)
@@ -641,7 +668,7 @@ class Transmitter(models.Model):
                     f'https://{self.remote_site.domain}/data_connector/super-api/{self.serializer.content_type.app_label}__{self.serializer.content_type.model}/',
                     headers=headers,
                     json={'data': serializer_data},   
-                    verify=False, 
+                    # verify=False, 
                 )
                 print('response', response)
                 if response.status_code != 200:
@@ -688,6 +715,7 @@ class TransmitterLog(models.Model):
     )
 
     class Meta: 
+        ordering = ['-date']
         verbose_name = 'Лог передачи'
         verbose_name_plural = 'Логи передач'
 

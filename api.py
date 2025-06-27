@@ -150,7 +150,7 @@ class SuperApiView(APIView):
     # @csrf_exempt
     def post(self, request, natural_key, serializer_name=None, obj_id=None):
         print('post')
-        print('request.data', request.data)
+        # print('request.data', request.data)
 
         if obj_id:   
             return Response({"message": "Нельзя задать id для создаваемого обьекта"}, status=status.HTTP_404_NOT_FOUND)
