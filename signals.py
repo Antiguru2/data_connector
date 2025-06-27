@@ -39,6 +39,11 @@ def create_initial_data(sender, **kwargs):
             ...
             # TODO Нужно сделать запрос на base_store, и получить остальные сайты и отправить этот туда
 
+        DataConnector.objects.get_or_create(
+            name='Сериализатор',
+            slug='serializer',
+        )
+
 
 @receiver(post_save, sender=Transmitter)
 def update_statistic(sender, instance, **kwargs):
@@ -54,7 +59,7 @@ def create_serializer_fields(sender: DataConnector, instance: DataConnector, cre
     '''
     В сигнале создаются поля сериализатора которые представляют из себя поля модели к которой привязан DataConnector
     '''
-    if created:
+    if created and instance.content_type:
         model_fields = instance.content_type.model_class()._meta.get_fields()
         for model_field in model_fields:
             
