@@ -50,6 +50,7 @@ class SerializerFieldAbstractModel(DCNameAbstractModel):
         # related
         ('ForeignKey', 'ForeignKey'),
         ('ManyToManyField', 'ManyToManyField'),
+        ('PseudoManyToManyField', 'PseudoManyToManyField'),
         ('ManyToOneRel', 'ManyToOneRel'),
         ('OneToOneField', 'OneToOneField'),
         ('GenericRelation', 'GenericRelation'),
@@ -57,8 +58,20 @@ class SerializerFieldAbstractModel(DCNameAbstractModel):
         ('serializer', 'serializer'),
         # unique
         ('cargo_calc__route', 'cargo_calc__route'),
+        ('cargo_calc__transit_route', 'cargo_calc__transit_route'),
         ('cargo_calc__services', 'cargo_calc__services'),
         ('cargo_calc__prices', 'cargo_calc__prices'),
+    )
+    METHOD_CHOICES = (
+        ('get', 'Найти'),
+        ('create', 'Создать'),
+        ('get_or_create', 'Найти или создать'),
+        ('get_and_update_or_create', 'Найти и обновить или создать'),
+    )    
+    DATA_TYPE_CHOICES = (
+        ('rest', 'REST'),
+        ('form', 'FORM'),
+        ('key-form', 'KEY-FORM'),
     )
 
     verbose_name = models.CharField(
@@ -69,8 +82,7 @@ class SerializerFieldAbstractModel(DCNameAbstractModel):
     type_for_handler = models.CharField(
         max_length=255,
         choices=TYPE_CHOICES,
-        null=True,
-        blank=True,
+        null=True, blank=True,
         verbose_name=_('Тип для обработчика'),
         # help_text=_('Тип поля, используемый для обработки данных при сериализации. '
         #            'Если не указан, будет использован основной тип поля.'),
@@ -78,28 +90,57 @@ class SerializerFieldAbstractModel(DCNameAbstractModel):
     type_for_form_handler = models.CharField(
         max_length=255,
         choices=TYPE_CHOICES,
-        null=True,
-        blank=True,
+        null=True, blank=True,
         verbose_name=_('Тип для обработчика формы'),
         # help_text=_('Тип поля, используемый при работе с формами. '
         #            'Определяет, как поле будет отображаться и обрабатываться в формах.'),
     )
+
     incoming_handler = models.CharField(
         max_length=255,
         choices=TYPE_CHOICES,
-        null=True,
-        blank=True,
+        null=True, blank=True,
         verbose_name=_('Тип для обработчика входящих данных'),
         # help_text=_('Тип поля, используемый для обработки входящих данных. '
         #            'Определяет, как будут обрабатываться данные при десериализации.'),
     )
+    incoming_method = models.CharField(
+        max_length=255,
+        choices=METHOD_CHOICES,
+        default='get',
+        verbose_name=_('Cпособ обработки входящих данных'),
+        # help_text=_('Тип поля, используемый для обработки входящих данных. '
+        #            'Определяет, как будут обрабатываться данные при десериализации.'),
+    )  
+    field_name_for_method = models.CharField(
+        max_length=255,
+        null=True, blank=True,
+        verbose_name=_('Название поля для обработки входящих данных'),
+        # help_text=_('Тип поля, используемый для обработки входящих данных. '
+        #            'Определяет, как будут обрабатываться данные при десериализации.'),
+    )      
+
     alt_key = models.CharField(
         max_length=255,
         null=True,
         blank=True,
-        verbose_name=_('Альтернативный ключ'),
+        verbose_name=_('Альтернативный ключ(под этим ключом будут возвращены данные)'),
         # help_text=_('Альтернативное имя поля, которое будет использоваться при сериализации. '
         #            'Позволяет изменить имя поля в выходных данных без изменения структуры модели.'),
+    )
+    real_field_name = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name=_('Реальное название поля'),
+        # help_text=_('Альтернативное имя поля, которое будет использоваться при сериализации. '
+        #            'Позволяет изменить имя поля в выходных данных без изменения структуры модели.'),
+    )    
+    data_type = models.CharField(
+        max_length=255,
+        choices=DATA_TYPE_CHOICES,
+        default='rest',
+        verbose_name=_('Тип данных'),
     )
     is_active = models.BooleanField(
         default=True,
@@ -114,6 +155,19 @@ class SerializerFieldAbstractModel(DCNameAbstractModel):
         verbose_name=_('Тип'),
         # help_text=_('Основной тип поля, определяющий его поведение и формат данных. '
         #            'Используется по умолчанию, если не указаны специальные обработчики.'),
+    )
+    order = models.IntegerField(
+        default=0,
+        verbose_name=_('Порядок сортировки'),
+        # help_text=_('Порядок сортировки полей в сериализаторе.'),
+    )
+    is_required = models.BooleanField(
+        default=True,
+        verbose_name=_('Обязательное поле'),
+    )
+    is_key_field = models.BooleanField(
+        default=False,
+        verbose_name=_('Является ключевым полем'),
     )
 
     class Meta:

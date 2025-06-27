@@ -115,6 +115,14 @@ class DataConnectorAdmin(admin.ModelAdmin):
         'name',
         'slug',
     ]
+    list_display = [
+        '__str__',
+        'is_active',
+        'content_type',
+    ]
+    list_filter = [ 
+        'content_type',
+    ]
     fieldsets = [
         (None, {
             'fields': (

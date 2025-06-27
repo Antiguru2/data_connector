@@ -1,7 +1,5 @@
-import pprint
-
 from pprint import pprint
-from typing import Optional
+from typing import Optional, Union
 
 from django.db import models
 from django.contrib import admin
@@ -34,6 +32,15 @@ class SerializerFieldMixin:
         """
         handler_type = self.type_for_handler if self.type_for_handler else self.type  
         return FieldHandler(name=handler_type)
+
+    def get_super_handler(self, data_type: str):
+        """
+        Возвращает обработчик поля для сериализации данных.
+        """
+        if data_type == 'key-form':
+            return KeyFormFieldHandler(name=self.type)
+        else:
+            return None
     
     def get_input_handler(self):
         """
@@ -44,6 +51,8 @@ class SerializerFieldMixin:
         """
         handler_type = self.incoming_handler if self.incoming_handler else self.type
         return IncomingFieldHandler(name=handler_type)
+
+    
 
     def get_form_handler(self):
         """
@@ -63,6 +72,12 @@ class SerializerFieldMixin:
             StructureFieldHandler: Обработчик структуры данных.
         """
         return StructureFieldHandler(name=self.type)
+
+    def get_validate_handler(self):
+        """
+        Возвращает обработчик для валидации данных.
+        """
+        return ValidateFieldHandler(name=self.type)
 
 
 class DataConnectorMixin:
@@ -117,7 +132,6 @@ class DataConnectorMixin:
         cls,
         some_model: models.Model,
         user: models.Model,
-        method: str = 'GET',
         data_type: str = 'rest',
         serializer_name: Optional[str] = None, 
         serializer_self_assembly_data: Optional[dict] = None
@@ -128,7 +142,6 @@ class DataConnectorMixin:
         Args:
             some_model (models.Model): Модель для сериализации.
             user (models.Model): Пользователь, запрашивающий сериализатор.
-            method (str): HTTP-метод запроса.
             data_type (str): Тип данных (rest/form).
             serializer_name (Optional[str]): Имя сериализатора.
             serializer_self_assembly_data (Optional[dict]): Данные для автоматической настройки.
@@ -169,15 +182,19 @@ class DataConnectorMixin:
                 serializer.is_allow_delete = True
                 serializer.is_allow_create = True
 
-        serializer.method = method
         serializer.user = user
 
         if not data_type:
             data_type = 'rest'        
         serializer.data_type = data_type
 
-        # print('serializer', serializer)
         return serializer
+    
+    def has_permission(self, user: models.Model, queryset: models.QuerySet) -> bool:
+        """
+        Проверяет, имеет ли пользователь право на просмотр данных.
+        """
+        return True
 
     def set_data(self, request_data: dict, method: str, obj_id: Optional[int] = None):
         """
@@ -195,7 +212,7 @@ class DataConnectorMixin:
         response_status = 200
         
         try:
-            queryset = self.deserialize(request_data, method, obj_id)
+            queryset, error_data = self.deserialize(request_data, method, id_field_value=obj_id)
         except Exception as error:
             queryset = self.content_type.model_class().objects.none()
             print('DataConnectorMixin.set_data() error', error)
@@ -218,14 +235,11 @@ class DataConnectorMixin:
         Returns:
             dict: Сериализованные данные.
         """
-        # print('get_data')
         response_data = {}
         try:
             response_data = self.serialize(queryset)
-            # print('response_dataresponse_data')
-            # print('response_data', response_data)
         except Exception as error:
-            # traceback.print_exc()
+            traceback.print_exc()
             print('DataConnectorMixin.get_data() error', error)
 
         return response_data
@@ -242,11 +256,12 @@ class DataConnectorMixin:
             list: Сериализованные данные.
         """
         serializer_data = []
-        # print('serializer type', self.data_type)
         if self.data_type == 'rest':
             serializer_data = self.serialize_rest_data(queryset, **kwargs)
         elif self.data_type == 'form':
             serializer_data = self.serialize_form_data(queryset, **kwargs)
+        elif self.data_type == 'key-form':
+            serializer_data = self.serialize_key_form_data(queryset, **kwargs)
 
         return serializer_data
     
@@ -261,15 +276,11 @@ class DataConnectorMixin:
         Returns:
             list: Сериализованные данные в REST формате.
         """
-        print('serialize_rest_data')
         serializer_data = []
         for obj in queryset:
             fields_data = {}
             serializer_fields = self.get_serializer_fields()
-            # print('serializer_fields')
-            # pprint(serializer_fields)
             for serializer_field in serializer_fields:
-                # print('serializer_field', serializer_field.name)
                 handler: FieldHandler = serializer_field.get_handler()
                 if not handler:
                     value = 'Oбработчик не настроен'
@@ -279,8 +290,6 @@ class DataConnectorMixin:
                         serializer_field_name = serializer_field.alt_key
                         
                     value = handler.get_value(obj, serializer_field)
-
-                # print('value', value)
 
                 fields_data[serializer_field_name] = value
 
@@ -302,6 +311,7 @@ class DataConnectorMixin:
         """
         serializer_data = []
         for obj in queryset:
+            fields_data = []
             serializer_fields = self.get_serializer_fields()
             for serializer_field in serializer_fields:
                 handler: FieldHandler = serializer_field.get_handler()
@@ -309,17 +319,42 @@ class DataConnectorMixin:
                     value = 'Oбработчик не настроен'
                         
                 value = handler.get_value(obj, serializer_field)
-
-                form_handler = serializer_field.get_form_handler()
-                serializer_data.append({
+                fields_data.append({
                     "name": serializer_field.name,
                     "verbose_name": serializer_field.verbose_name,
                     "type": serializer_field.type,
                     "value": value,
-                })                
+                })   
+
+            serializer_data.append(fields_data)
 
         return serializer_data
     
+    def serialize_key_form_data(self, queryset: models.QuerySet, **kwargs):
+        """
+        Сериализует данные в KEY-FORM формате.
+        """
+        serializer_data = []
+        for obj in queryset:
+            fields_data = {}
+            serializer_fields = self.get_serializer_fields()
+            for serializer_field in serializer_fields:
+                handler: FieldHandler = serializer_field.get_super_handler(data_type='key-form')
+                if not handler:
+                    value = 'Oбработчик не настроен'
+                else:
+                    value = handler.get_value(obj, serializer_field)
+
+                fields_data[serializer_field.name] = {
+                    'value': value,
+                    'type': serializer_field.type,
+                    'verbose_name': serializer_field.verbose_name,
+                }
+
+            serializer_data.append(fields_data)
+
+        return serializer_data 
+
     def get_structure(self, **kwargs):
         """
         Получает структуру данных сериализатора.
@@ -335,6 +370,58 @@ class DataConnectorMixin:
 
         return serializer_data
     
+    def validate(self, data: dict, **kwargs) -> tuple[bool, dict]:
+        """
+        Валидирует входящие данные.
+        
+        Args:
+            data (dict): Данные для валидации
+            **kwargs: Дополнительные параметры
+            
+        Returns:
+            tuple[bool, dict]: (результат валидации, словарь с ошибками)
+        """
+        if self.data_type == 'rest':
+            raise NotImplementedError('validate for rest data type is not implemented')
+        elif self.data_type == 'form':
+            return self.validate_form_data(data, **kwargs)
+        
+        return False, {'error': 'Неизвестный тип данных'}
+
+    def validate_form_data(self, data: list, level: int = 0, **kwargs) -> tuple[bool, dict]:
+        """
+        Валидирует данные в формате FORM.
+        
+        Args:
+            data (dict): Данные для валидации
+            **kwargs: Дополнительные параметры
+            
+        Returns:
+            tuple[bool, dict]: (результат валидации, словарь с исходными данными, дополненными информацией о валидации)
+        """
+        validate_data = []
+        serializer_fields = self.get_serializer_fields()
+        is_valid = True
+
+        for n, field in enumerate(data):
+            field_name = field.get('name')
+
+            serializer_field = serializer_fields.filter(name=field_name).first()
+            if not serializer_field:
+                continue
+
+            validate_handler = serializer_field.get_validate_handler()
+            field_is_valid, validate_field_data = validate_handler.validate(field, serializer_field, level=level)
+            if not field_is_valid and level == 0:
+                validate_data.insert(0, validate_field_data)
+            else:
+                validate_data.append(validate_field_data)
+                        
+            if not field_is_valid:
+                is_valid = False
+
+        return is_valid, validate_data
+
     def get_form_structure(self, additional_field_keys: list = [], **kwargs):
         """
         Получает структуру данных сериализатора.
@@ -356,20 +443,15 @@ class DataConnectorMixin:
             }
             
             for additional_field_key in additional_field_keys:
-                # print('additional_field_key', additional_field_key)
-                # print(serializer_field.__class__.__name__)
-                # print(dir(serializer_field))
-                # print(hasattr(serializer_field, additional_field_key))
                 if hasattr(serializer_field, additional_field_key):
                     serializer_field_value = getattr(serializer_field, additional_field_key)
                     field_data[additional_field_key] = serializer_field_value or ''
 
-            # print('default_field_data', field_data)
             serializer_data.append(field_data)                
 
         return serializer_data
     
-    def deserialize(self, *args, **kwargs):
+    def deserialize(self, *args, **kwargs) -> tuple[Optional[models.Model], dict]:
         """
         Десериализует входящие данные.
         """
@@ -379,6 +461,7 @@ class DataConnectorMixin:
             return self.deserialize_form_data(*args, **kwargs)
 
     def deserialize_rest_data(self, request_data, method: str, obj_id: Optional[int] = None):
+    # def deserialize_rest_data(self, request_data, method: str = 'create', obj_id: Optional[int] = None):
         """
         Десериализует входящие данные.
         
@@ -390,12 +473,9 @@ class DataConnectorMixin:
         Returns:
             QuerySet: Набор объектов после десериализации.
         """
-        print('DataConnectorMixin.deserialize()')
         some_model_class = self.content_type.model_class()
         model_data = [request_data] if isinstance(request_data, dict) else request_data
         serializer_fields = self.get_serializer_fields()
-        # print('some_model_class', some_model_class)
-        # print('serializer_fields', serializer_fields)
 
         error_data = {}
         if obj_id:
@@ -410,7 +490,6 @@ class DataConnectorMixin:
 
                 try:
                     serializer_field = serializer_fields.filter(name=field_name).first()
-                    # print('serializer_field', serializer_field)
                     input_handler: FieldHandler = serializer_field.get_handler()
                     transform_field_name, transform_field_value, error = input_handler.get_transform_data(field_value, serializer_field)
                     error_data[field_name] = error
@@ -419,73 +498,90 @@ class DataConnectorMixin:
                     print(f'DataConnector.deserialize() error in field {field_name}', error)
                     error_data[field_name] = error
 
-            # some_model.save()
+        some_model.data_connector_finish_save = True
+        some_model.save()
             
-        # queryset = some_model_class.objects.filter(id=some_model.id)
-        # return queryset
         return [some_model]
 
-    def deserialize_form_data(self, request_data, method: str, obj_id: Optional[int] = None):
+    # def deserialize_form_data(self, request_data, method: str, obj_id: Optional[int] = None):
+    def deserialize_form_data(self, request_data, method: str = 'create', id_field_name: str = 'id', id_field_value: Union[int, str] = None) -> tuple[Optional[models.Model], list]:
         """
         Десериализует входящие данные в формате FORM.
         """
-        print('DataConnectorMixin.deserialize_form_data()')
-        some_model_class = self.content_type.model_class()
+        print(f'DataConnector.deserialize_form_data() !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        print(f'method: {method}')
+        some_model_class: models.Model = self.content_type.model_class()
         model_data = [request_data] if isinstance(request_data, dict) else request_data
         serializer_fields = self.get_serializer_fields()
-        # print('some_model_class', some_model_class)
-        # print('request_data', request_data)
-        # print('serializer_fields', serializer_fields)
         
-        # error_data = {}
-        if obj_id:
-            some_model = some_model_class.objects.get(id=obj_id)
-        else:
+        error_data = {}
+        some_model = None
+        if method == 'get':
+            if id_field_value:
+                some_model = some_model_class.objects.filter(**{id_field_name: id_field_value}).first()
+
+            if some_model:
+                return some_model, model_data
+            
+            raise Exception(f'model: {some_model_class} with id_field_name: {id_field_name} id_field_value: {id_field_value} not found')
+        
+        elif method == 'create':
             some_model = some_model_class()
 
+        elif method == 'get_or_create':     
+            if id_field_value:
+                some_model = some_model_class.objects.filter(**{id_field_name: id_field_value}).first()   
+
+            if some_model:
+                return some_model, model_data
+            else:
+                some_model = some_model_class()         
+                           
+        elif method == 'get_and_update_or_create':
+            if id_field_value:
+                some_model = some_model_class.objects.filter(**{id_field_name: id_field_value}).first()   
+
+            if not some_model:
+                some_model = some_model_class()     
+        
+        # Десериализация данных
         many_to_many_fields = []
         for model_field_data in model_data:
-            # print("model_field_data.get('type')", model_field_data.get('type'))
-            if model_field_data.get('type') == 'ManyToManyField':
+            if model_field_data.get('type') in ['ManyToManyField', 'PseudoManyToManyField', 'GenericRelation']:
                 many_to_many_fields.append(model_field_data)
                 continue
 
             field_name = model_field_data.get('name')
+            print(f'field_name: {field_name} =======================================================')
             field_value = model_field_data.get('value')
-            # print('field_name', field_name)
-            # print('field_value', field_value)
 
             serializer_field = serializer_fields.filter(name=field_name).first()
+
             input_handler: IncomingFieldHandler = serializer_field.get_input_handler()
             transform_field_name, transform_field_value, error = input_handler.get_transform_data(field_value, serializer_field)
-            # print('transform_field_name', transform_field_name)
-            # print('transform_field_value', transform_field_value)
-            # print('error', error)
-            # error_data[field_name] = error
+
+            print(f'transform_field_name: {transform_field_name}')
+            # print(f'transform_field_value: {transform_field_value}')
+
             setattr(some_model, transform_field_name, transform_field_value)
 
         some_model.save()
 
-        # print('_++++++++++++++++++++++++++++++++++_', len(many_to_many_fields))
         for many_to_many_field in many_to_many_fields:
             field_name = many_to_many_field.get('name')
             field_value = many_to_many_field.get('value')
-            # print('field_name', field_name)
-            # print('field_value', field_value)
 
             serializer_field = serializer_fields.filter(name=field_name).first()
             input_handler: IncomingFieldHandler = serializer_field.get_input_handler()
             input_handler.some_model = some_model
             transform_field_name, transform_field_value, error = input_handler.get_transform_data(field_value, serializer_field)
-            # print('transform_field_name', transform_field_name)
-            # print('transform_field_value', transform_field_value)
-            # print('error', error)
-            # error_data[field_name] = error
-            setattr(some_model, transform_field_name, transform_field_value)
+            # error_data[field_name] = error            
+            # setattr(some_model, transform_field_name, transform_field_value)
         
-        # some_model.save()
+        some_model.data_connector_finish_save = True
+        some_model.save()
 
-        return some_model
+        return some_model, model_data
 
     def get_serializer_fields_class(self):
         """
@@ -493,7 +589,7 @@ class DataConnectorMixin:
         """
         return self.serializer_fields.model
 
-    def get_serializer_fields(self):
+    def get_serializer_fields(self, filter={'is_active': True}):
         """
         Получает поля сериализатора.
         
@@ -501,7 +597,7 @@ class DataConnectorMixin:
             QuerySet: Набор полей сериализатора.
         """
         try:
-            serializer_fields = self.serializer_fields.filter(is_active=True).all()
+            serializer_fields = self.serializer_fields.filter(**filter).order_by('order')
             return serializer_fields
         except Exception as error:
             print('DataConnector not serializer_fields')

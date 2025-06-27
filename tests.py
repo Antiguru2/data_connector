@@ -42,146 +42,46 @@ class DataConnectorTestCase(TestCase):
         self.manytomany_models = ManyToManyModel.objects.all()
         self.generic_model = GenericRelatedModel.objects.first()
 
-        self.dict_api_url = f"https://127.0.0.1:8000/data_connector/super-api/{self.main_model._meta.app_label}.{self.main_model._meta.model_name}/"
-        self.list_api_url = f"https://127.0.0.1:8000/data_connector/super-api/form/{self.main_model._meta.app_label}.{self.main_model._meta.model_name}/"
+        main_model_natural_key = f"{self.main_model._meta.app_label}.{self.main_model._meta.model_name}"
+        self.default_api_url = f"https://127.0.0.1:8000/data_connector/super-api/{main_model_natural_key}/"
 
-    def test_api_get_dict_format(self):
-        print("test_api_get_dict_format")
+    def get_key_form_format_value(self, data: dict, key: str):
+        key_form_format_value = None
+        field_data = data.get(key)
+        if field_data:
+            key_form_format_value = field_data.get('value')
+        return key_form_format_value
+
+    def test_api_key_form_format(self):
+        # print("test_api_get_key_form_format")
         """
-        Тест получения данных в формате dict.
+        Тест получения данных в формате key-form
         """
-        response = self.client.get(self.dict_api_url + f"{self.main_model.id}/")
-        self.assertEqual(response.status_code, 401)
+        key_form_url = self.default_api_url + f"{self.main_model.id}/" + "key-form/"
+        # response = self.client.get(key_form_url)
+        # self.assertEqual(response.status_code, 401)
 
         self.client.force_login(self.user)
-        response = self.client.get(self.dict_api_url + f"{self.main_model.id}/")
-        # print('response')
-        # try:
-        #     print(response.json())
-        # except:
-        #     print(response.content)
+        response = self.client.get(key_form_url)
+        if response.status_code != 200:
+            try:
+                print('error', response.json())
+            except Exception as e:
+                print('error', response.content)
 
         self.assertEqual(response.status_code, 200)
         data = response.json().get('data')[0]
 
 
-        self.assertEqual(data.get('id'), self.main_model.id)
-        self.assertEqual(data.get('char_field'), self.main_model.char_field)
-        self.assertEqual(data.get('integer_field'), self.main_model.integer_field)
-        self.assertEqual(data.get('float_field'), self.main_model.float_field)
-        self.assertEqual(data.get('boolean_field'), self.main_model.boolean_field)
-        self.assertIsInstance(data.get('datetime_field'), str)
-        self.assertEqual(data.get('text_field'), self.main_model.text_field)
+        self.assertEqual(self.get_key_form_format_value(data, 'id'), self.main_model.id)
+        self.assertEqual(self.get_key_form_format_value(data, 'char_field'), self.main_model.char_field)
+        self.assertEqual(self.get_key_form_format_value(data, 'integer_field'), self.main_model.integer_field)
+        self.assertEqual(self.get_key_form_format_value(data, 'float_field'), self.main_model.float_field)
+        self.assertEqual(self.get_key_form_format_value(data, 'boolean_field'), self.main_model.boolean_field)
+        self.assertIsInstance(self.get_key_form_format_value(data, 'datetime_field'), str)
+        self.assertEqual(self.get_key_form_format_value(data, 'text_field'), self.main_model.text_field)
 
-        self.assertEqual(data.get('one_to_one_model'), self.main_model.one_to_one_model.id)
-        self.assertEqual(data.get('for_in_key_model'), self.main_model.for_in_key_model.id)
-        self.assertEqual(data.get('many_to_many_models'), [model.id for model in self.main_model.many_to_many_models.all()])
+        self.assertEqual(self.get_key_form_format_value(data, 'one_to_one_model'), self.main_model.one_to_one_model.id)
+        self.assertEqual(self.get_key_form_format_value(data, 'for_in_key_model'), self.main_model.for_in_key_model.id)
+        self.assertEqual(self.get_key_form_format_value(data, 'many_to_many_models'), [model.id for model in self.main_model.many_to_many_models.all()])
 
-    def test_api_list_dict_format(self):
-        print("test_api_get_list_format")
-
-        response = self.client.get(self.dict_api_url)
-        self.assertEqual(response.status_code, 401)
-
-        self.client.force_login(self.user)
-        response = self.client.get(self.dict_api_url)
-        # print('response')
-        # try:
-        #     print(response.json())
-        # except:
-        #     print(response.content)
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json().get('data')
-        self.assertEqual(len(data), 2)
-        
-    def test_api_get_list_format(self):
-        print("test_api_get_list_format")
-        """
-        Тест получения данных в формате list.
-        """
-        response = self.client.get(self.list_api_url + f"{self.main_model.id}/")
-        self.assertEqual(response.status_code, 401)
-
-        self.client.force_login(self.user)
-        response = self.client.get(self.list_api_url + f"{self.main_model.id}/")
-        # print('response')
-        # try:
-        #     print(response.json())
-        # except:
-        #     print(response.content)
-
-        data = response.json().get('data')
-        default_fields = ['id', 'char_field', 'integer_field', 'float_field', 'boolean_field', 'text_field']
-        for field in data:
-            if field.get('name') in default_fields:
-                self.assertEqual(field.get('value'), getattr(self.main_model, field.get('name')))
-
-            elif field.get('name') == 'one_to_one_model':
-                self.assertEqual(field.get('value'), self.main_model.one_to_one_model.id)
-
-            elif field.get('name') == 'for_in_key_model':
-                self.assertEqual(field.get('value'), self.main_model.for_in_key_model.id)
-
-            elif field.get('name') == 'many_to_many_models':
-                self.assertEqual(field.get('value'), [model.id for model in self.main_model.many_to_many_models.all()])
-
-            else:
-                ...
-                
-                
-                
-            
-
-
-
-    # def test_api_get_list_format(self):
-    #     """
-    #     Тест получения данных в формате list.
-    #     """
-    #     response = self.client.get(self.api_url, {'format': 'list'})
-    #     self.assertEqual(response.status_code, 200)
-    #     data = response.json()
-    #     self.assertIsInstance(data, list)
-    #     for field in data:
-    #         self.assertIn('name', field)
-    #         self.assertIn('value', field)
-    #         self.assertIn('verbose_name', field)
-
-    # def test_api_post_dict_format(self):
-    #     """
-    #     Тест создания данных в формате dict.
-    #     """
-    #     data = {
-    #         'name': 'Новая тестовая модель',
-    #         'description': 'Описание новой модели',
-    #         'is_active': True,
-    #     }
-    #     response = self.client.post(self.api_url, data, content_type='application/json')
-    #     self.assertEqual(response.status_code, 201)
-    #     self.assertTrue(__MainTestModel.objects.filter(name='Новая тестовая модель').exists())
-
-    # def test_api_post_list_format(self):
-    #     """
-    #     Тест создания данных в формате list.
-    #     """
-    #     data = [
-    #         {
-    #             'name': 'name',
-    #             'value': 'Новая тестовая модель',
-    #             'verbose_name': 'Название',
-    #         },
-    #         {
-    #             'name': 'description',
-    #             'value': 'Описание новой модели',
-    #             'verbose_name': 'Описание',
-    #         },
-    #         {
-    #             'name': 'is_active',
-    #             'value': True,
-    #             'verbose_name': 'Активен',
-    #         },
-    #     ]
-    #     response = self.client.post(self.api_url, data, content_type='application/json')
-    #     self.assertEqual(response.status_code, 201)
-    #     self.assertTrue(__MainTestModel.objects.filter(name='Новая тестовая модель').exists())

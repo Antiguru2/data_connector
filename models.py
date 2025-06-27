@@ -140,6 +140,8 @@ class DataConnector(
           DataConnectorMixin
         - Для корректной работы требуется указать content_type
     """
+    data_type = 'form'
+    
     class Meta:
         verbose_name = _('Сериализатор')
         verbose_name_plural = _('Сериализаторы')
