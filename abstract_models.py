@@ -243,3 +243,19 @@ class DataConnectorAbstractModel(DCBaseContentObject):
         verbose_name = _('Сериализатор')
         verbose_name_plural = _('Сериализаторы')
 
+
+class DataConnectorAbstractAdditionalFields(models.Model):
+    """
+    Абстрактный класс для добавления дополнительных полей к обьектам связанным с сериализатором.
+    """
+    key_fields_cache = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name=_('Кэш ключевых полей'),
+    )
+
+    class Meta:
+        abstract = True
+        verbose_name = _('Дополнительные поля')
+        verbose_name_plural = _('Дополнительные поля')

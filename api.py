@@ -125,7 +125,7 @@ class SuperApiView(APIView):
 
         for get_param_slug, get_param_value in get_params.items():
 
-            print('get_param_value', get_param_value)
+            # print('get_param_value', get_param_value)
             # Пробразуем спецефичные для QueryDict значения в валидные значения для objects.filter()
             if get_param_value in ['True', 'true', 'False', 'false']:
                 if get_param_value in ['True', 'true']:
@@ -155,7 +155,7 @@ class SuperApiView(APIView):
             except FieldError:
                 pass
 
-        print('django_filter', django_filter)
+        # print('django_filter', django_filter)
         return django_filter
     
     def get_arg(self, arg):
