@@ -455,16 +455,16 @@ class ValidateFieldHandler(Handler):
                     })
 
                     # Для time_price
-                    if serializer_field.name in ['total_price', 'rate']:
-                        # print("serializer_field.name in ['total_price', 'rate']")
-                        # print("items_is_valid", items_is_valid)
-                        # print("serializer_field.is_required", serializer_field.is_required)
-                        if (not items_is_valid or value == []) and not serializer_field.is_required:
-                            result_data.update({
-                                'info_text': 'Значение не было определено',
-                                'is_valid': True,
-                                'value': []
-                            })
+                    # if serializer_field.name in ['total_price', 'rate']:
+                    #     # print("serializer_field.name in ['total_price', 'rate']")
+                    #     # print("items_is_valid", items_is_valid)
+                    #     # print("serializer_field.is_required", serializer_field.is_required)
+                    #     if (not items_is_valid or value == []) and not serializer_field.is_required:
+                    #         result_data.update({
+                    #             'info_text': 'Значение не было определено',
+                    #             'is_valid': True,
+                    #             'value': []
+                    #         })
                         # print("result_data", result_data)
                     
                 elif serializer_field.type == 'GenericForeignKey':
