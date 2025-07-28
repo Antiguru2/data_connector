@@ -13,6 +13,7 @@ from django.contrib.contenttypes.models import ContentType
 from data_connector.locales import RELATED_FIELD_TYPES
 from .abstract_models import SerializerFieldAbstractModel, DataConnectorAbstractModel
 from .field_handlers import *
+from .registry import field_registry
 
 
 class SerializerFieldMixin:
@@ -34,7 +35,14 @@ class SerializerFieldMixin:
         Returns:
             FieldHandler: Обработчик поля, соответствующий типу поля.
         """
-        handler_type = self.type_for_handler if self.type_for_handler else self.type  
+        handler_type = self.type_for_handler if self.type_for_handler else self.type
+        
+        # Проверяем, есть ли кастомный обработчик
+        custom_handler_class = field_registry.get_handler('field', handler_type)
+        if custom_handler_class:
+            return custom_handler_class(name=handler_type)
+        
+        # Возвращаем стандартный обработчик
         return FieldHandler(name=handler_type)
 
     def get_super_handler(self, data_type: str):
@@ -54,6 +62,13 @@ class SerializerFieldMixin:
             IncomingFieldHandler: Обработчик входящих данных.
         """
         handler_type = self.incoming_handler if self.incoming_handler else self.type
+        
+        # Проверяем, есть ли кастомный обработчик
+        custom_handler_class = field_registry.get_handler('input', handler_type)
+        if custom_handler_class:
+            return custom_handler_class(name=handler_type)
+        
+        # Возвращаем стандартный обработчик
         return IncomingFieldHandler(name=handler_type)
 
     
@@ -66,6 +81,13 @@ class SerializerFieldMixin:
             FormFieldHandler: Обработчик форм.
         """
         handler_type = self.type_for_form_handler if self.type_for_form_handler else self.type
+        
+        # Проверяем, есть ли кастомный обработчик
+        custom_handler_class = field_registry.get_handler('form', handler_type)
+        if custom_handler_class:
+            return custom_handler_class(name=handler_type)
+        
+        # Возвращаем стандартный обработчик
         return FormFieldHandler(name=handler_type)
     
     def get_structure_handler(self):
@@ -75,12 +97,24 @@ class SerializerFieldMixin:
         Returns:
             StructureFieldHandler: Обработчик структуры данных.
         """
+        # Проверяем, есть ли кастомный обработчик
+        custom_handler_class = field_registry.get_handler('structure', self.type)
+        if custom_handler_class:
+            return custom_handler_class(name=self.type)
+        
+        # Возвращаем стандартный обработчик
         return StructureFieldHandler(name=self.type)
 
     def get_validate_handler(self):
         """
         Возвращает обработчик для валидации данных.
         """
+        # Проверяем, есть ли кастомный обработчик для конкретного поля
+        custom_handler_class = field_registry.get_handler('validate', self.name)
+        if custom_handler_class:
+            return custom_handler_class(name=self.type)
+        
+        # Возвращаем стандартный обработчик
         return ValidateFieldHandler(name=self.type)
 
 
@@ -259,9 +293,9 @@ class DataConnectorMixin:
         Returns:
             list: Сериализованные данные.
         """
-        print(f'DataConnectorMixin.serialize() !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-        print(f'self.name: {self.name}')
-        print(f'self.data_type: {self.data_type}')
+        # print(f'DataConnectorMixin.serialize() !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        # print(f'self.name: {self.name}')
+        # print(f'self.data_type: {self.data_type}')
         serializer_data = []
         if self.data_type == 'rest':
             serializer_data = self.serialize_rest_data(queryset, **kwargs)
@@ -524,8 +558,8 @@ class DataConnectorMixin:
         """
         Десериализует входящие данные в формате FORM.
         """
-        print(f'DataConnector.deserialize_form_data() !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-        print(f'method: {method}')
+        # print(f'DataConnector.deserialize_form_data() !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        # print(f'method: {method}')
         some_model_class: models.Model = self.content_type.model_class()
         model_data = [request_data] if isinstance(request_data, dict) else request_data
         serializer_fields = self.get_serializer_fields()
@@ -568,7 +602,7 @@ class DataConnectorMixin:
                 continue
 
             field_name = model_field_data.get('name')
-            print(f'field_name: {field_name} =======================================================')
+            # print(f'field_name: {field_name} =======================================================')
             field_value = model_field_data.get('value')
 
             serializer_field = serializer_fields.filter(name=field_name).first()
@@ -576,7 +610,7 @@ class DataConnectorMixin:
             input_handler: IncomingFieldHandler = serializer_field.get_input_handler()
             transform_field_name, transform_field_value, error = input_handler.get_transform_data(field_value, serializer_field)
 
-            print(f'transform_field_name: {transform_field_name}')
+            # print(f'transform_field_name: {transform_field_name}')
             # print(f'transform_field_value: {transform_field_value}')
 
             setattr(some_model, transform_field_name, transform_field_value)

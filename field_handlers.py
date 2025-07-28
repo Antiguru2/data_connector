@@ -9,7 +9,6 @@ from django.db import models
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 
-from calculator.models import DeliveryRoute, DeliveryRouteSegment, DeliveryPoint, RouteSegment, TransportType
 from data_connector.locales import RELATED_FIELD_TYPES
 
 class Handler():
@@ -199,85 +198,7 @@ class IncomingFieldHandler(Handler):
         transform_field_name = serializer_field.name
         transform_field_value = value
 
-        # print(f'serializer_field.incoming_handler', serializer_field.incoming_handler)
-
-        if serializer_field.incoming_handler == 'cargo_calc__route':
-            delivery_route = DeliveryRoute.objects.create()
-            for point in value:
-                if point.get('name') == 'from_airport_code':
-                    from_delivery_point, created = DeliveryPoint.objects.get_or_create(unic_code=point.get('value'))
-                elif point.get('name') == 'to_airport_code':
-                    to_delivery_point, created = DeliveryPoint.objects.get_or_create(unic_code=point.get('value'))
-
-            route_segment, created = RouteSegment.objects.get_or_create(
-                from_point=from_delivery_point, 
-                to_point=to_delivery_point,
-                transport_type=TransportType.objects.get(unic_code='AIR'),
-            )
-                
-            delivery_route_segment = DeliveryRouteSegment.objects.create(
-                delivery_route=delivery_route,
-                route_segment=route_segment,
-            )
-
-            transform_field_name = 'route_id'
-            transform_field_value = delivery_route.id
-            print('delivery_route', transform_field_value)
-
-        elif serializer_field.incoming_handler == 'cargo_calc__transit_route':
-            delivery_route = DeliveryRoute.objects.create()
-
-            delivery_route_segments_data = value[0].get('value')
-            for delivery_route_segment_data in delivery_route_segments_data:
-                for delivery_route_segment_field in delivery_route_segment_data:
-                    if delivery_route_segment_field.get('name') == 'order':
-                        order = delivery_route_segment_field.get('value')
-                    if delivery_route_segment_field.get('name') == 'route_segment':
-                        route_segment_data = delivery_route_segment_field.get('value')
-
-                for item in route_segment_data:
-                    unic_code = item.get('value')[0].get('value')
-                    if item.get('name') == 'from_point':
-                        from_point, created = DeliveryPoint.objects.get_or_create(unic_code=unic_code)
-                    elif item.get('name') == 'to_point':
-                        to_point, created = DeliveryPoint.objects.get_or_create(unic_code=unic_code)
-                        
-                route_segment, created = RouteSegment.objects.get_or_create(
-                    from_point=from_point, 
-                    to_point=to_point,
-                    transport_type=TransportType.objects.get(unic_code='AIR'),
-                )
-
-                delivery_route_segment = DeliveryRouteSegment.objects.create(
-                    delivery_route=delivery_route,
-                    route_segment=route_segment,
-                    order=order,
-                )
-
-            transform_field_name += '_id'
-            transform_field_value = delivery_route.id
-            
-                    
-        elif serializer_field.incoming_handler == 'cargo_calc__services':
-            for item in value:
-                service, service_data = serializer_field.serializer.deserialize(item)
-                service.get_price()
-                service.delivery_info = self.some_model
-                service.save()
-
-        elif serializer_field.incoming_handler == 'cargo_calc__prices':
-            for item in value:
-                price, price_data = serializer_field.serializer.deserialize(item)
-                if self.some_model:
-                    price.content_type = ContentType.objects.get_for_model(self.some_model)
-                    price.object_id = self.some_model.id
-                    price.name = 'price' if 'price' in serializer_field.name else serializer_field.name
-                    price.save()
-
-
-
-
-        elif serializer_field.serializer:
+        if serializer_field.serializer:
             # print(f'serializer_field.serializer: {serializer_field.serializer}')
             serializer = serializer_field.serializer
             try:
@@ -400,36 +321,7 @@ class ValidateFieldHandler(Handler):
             'is_valid': True,
         })
 
-        if serializer_field.name in ['to_airport_code', 'from_airport_code']:
-            if not re.match(r'^[A-Z]{3}$', value):
-                result_data.update({
-                    'error_text': 'Код аэропорта должен содержать 3 буквы(XXX)',
-                    'is_valid': False
-                })
-
-        elif serializer_field.name == 'transport_company':
-            transport_company_unic_code = value[0].get('value')
-            if not transport_company_unic_code:
-                result_data.update({
-                    'error_text': 'Транспортная компания не может быть пустой',
-                    'is_valid': False
-                })
-            else:
-                if not re.match(r'^[A-Z0-9]{2}$', transport_company_unic_code):
-                    result_data.update({
-                        'error_text': 'Код транспортной компании должен содержать 2 символа (буквы или цифры)',
-                        'is_valid': False
-                    })
-
-        elif serializer_field.name == 'awb_num':
-            # Должен быть в формате 550-66590878
-            if not re.match(r'^[0-9]{3}-[0-9]{8}$', value):
-                result_data.update({
-                    'error_text': 'Номер AWB должен быть в формате 550-66590878',
-                    'is_valid': False
-                })
-
-        elif serializer_field.serializer:
+        if serializer_field.serializer:
             serializer = serializer_field.serializer
             try:
                 if serializer_field.type in ['ForeignKey', 'OneToOneField',]:

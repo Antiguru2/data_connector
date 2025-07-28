@@ -61,6 +61,7 @@ class SerializerFieldAbstractModel(DCNameAbstractModel):
         ('cargo_calc__transit_route', 'cargo_calc__transit_route'),
         ('cargo_calc__services', 'cargo_calc__services'),
         ('cargo_calc__prices', 'cargo_calc__prices'),
+        ('cargo_calc__agent', 'cargo_calc__agent'),
     )
     METHOD_CHOICES = (
         ('get', 'Найти'),
