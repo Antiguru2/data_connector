@@ -1,7 +1,9 @@
-# import os
+import os
+import json
 
-# from django.conf import settings
+from django.conf import settings
 from django.dispatch import receiver
+from django.contrib.contenttypes.models import ContentType
 from django.db.models.signals import (
     pre_delete, 
     pre_save,
@@ -39,19 +41,94 @@ def create_initial_data(sender, **kwargs):
         if created:
             ...
             # TODO Нужно сделать запрос на base_store, и получить остальные сайты и отправить этот туда
+        # serializer__content_type = ContentType.objects.get_for_model(ContentType)
 
-        # form_field_handlers = FormFieldHandler.objects.all()
-        # if form_field_handlers.count() < len(SerializerField.TYPE_CHOICES):
-        #     for type_name, type_slug in SerializerField.TYPE_CHOICES:
-        #         form_field_handler, created_ = FormFieldHandler.objects.get_or_create(
-        #             # name=type_name,
-        #             slug=type_slug,
-        #         )
+        # print('Обновление базового сериализатора для контент типов')
+        # base_serializer_content_type = DataConnector.objects.filter(
+        #     content_type=serializer__content_type,
+        # ).first()
+        # if not base_serializer_content_type:
+        #     base_serializer_content_type = DataConnector.objects.create(
+        #         name='Базовый сериализатор для контент типов',
+        #         slug='base_serializer_content_type',
+        #         content_type=serializer__content_type,
+        #         description=str(
+        #             'Базовый сериализатор для контент типов предназначен для самосериализации контент типов'
+        #             'Он создаётся и восстанавливается автоматически при миграции'
+        #         ),
+        #     )
 
-        # DataConnector.objects.get_or_create(
-        #     name='Сериализатор',
-        #     slug='serializer',
-        # )
+        # update_base_serializer_fields(base_serializer_content_type, os.path.join(settings.BASE_DIR, 'data_connector/fixtures/base_serializer_content_type__fields_dump.json'))
+
+        # content_type__serializer = ContentType.objects.get_for_model(DataConnector)    
+
+        # print('Обновление базового сериализатора')
+        # base_serializer = DataConnector.objects.filter(
+        #     content_type=content_type__serializer,
+        # ).first()
+        # if not base_serializer:
+        #     base_serializer = DataConnector.objects.create(
+        #         name='Базовый сериализатор',
+        #         slug='base_serializer',
+        #         content_type=content_type__serializer,
+        #         description=str(
+        #             'Базовый сериализатор предназначен для самосериализации модели DataConnector'
+        #             'Он создаётся и восстанавливается автоматически при миграции'
+        #         ),
+        #     )
+
+        # update_base_serializer_fields(base_serializer, os.path.join(settings.BASE_DIR, 'data_connector/fixtures/base_serializer__fields_dump.json'))
+
+        # print('Обновление базового сериализатора для полей')
+        # content_type__serializer_field = ContentType.objects.get_for_model(SerializerField)
+        # base_serializer_for_fields = DataConnector.objects.filter(
+        #     content_type=content_type__serializer_field,
+        # ).first()
+        # if not base_serializer_for_fields:
+        #     base_serializer_for_fields = DataConnector.objects.create(
+        #         name='Базовый сериализатор для полей',
+        #         slug='base_serializer_for_fields',
+        #         content_type=content_type__serializer_field,
+        #         description=str(
+        #             'Базовый сериализатор для полей предназначен для самосериализации полей модели DataConnector'
+        #             'Он создаётся и восстанавливается автоматически при миграции'
+        #         ),
+        #     )
+
+        # update_base_serializer_fields(base_serializer_for_fields, os.path.join(settings.BASE_DIR, 'data_connector/fixtures/base_serializer_fields__fields_dump.json'))
+
+        # serializer_fields_field = base_serializer.serializer_fields.filter(name='serializer_fields').first()
+        # serializer_fields_field.serializer = base_serializer_for_fields
+        # serializer_fields_field.data_type = 'form'
+        # serializer_fields_field.save()
+
+        # serializer_fields_content_type = base_serializer.serializer_fields.filter(name='content_type').first()
+        # serializer_fields_content_type.serializer = base_serializer_content_type
+        # serializer_fields_content_type.data_type = 'rest'
+        # serializer_fields_content_type.save()
+
+        # serializer_fields_serializer = base_serializer_for_fields.serializer_fields.filter(name='serializer').first()
+        # serializer_fields_serializer.serializer = base_serializer
+        # serializer_fields_serializer.data_type = 'form'
+        # serializer_fields_serializer.save()
+
+
+def update_base_serializer_fields(serializer: DataConnector, dump_path: str):
+    with open(dump_path, 'r') as f:
+        serializer_fields_dump: list[dict] = json.load(f)
+
+    for serializer_field_dump in serializer_fields_dump:
+        serializer_field, created = SerializerField.objects.get_or_create(
+            name=serializer_field_dump['name'],
+            data_connector=serializer,
+        )
+        for field_name, field_value in serializer_field_dump.items():
+            if field_name == 'name':
+                continue
+
+            # if field_name == 'serializer_fields':
+            setattr(serializer_field, field_name, field_value)
+        serializer_field.save()
 
 
 @receiver(post_save, sender=Transmitter)
@@ -69,6 +146,9 @@ def create_serializer_fields(sender: DataConnector, instance: DataConnector, cre
     В сигнале создаются поля сериализатора которые представляют из себя поля модели к которой привязан DataConnector
     '''
     if created and instance.content_type:
+        if hasattr(instance, 'data_connector_finish_save'):
+            return
+
         model_fields = instance.content_type.model_class()._meta.get_fields()
         for model_field in model_fields:
             

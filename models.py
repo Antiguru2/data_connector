@@ -146,6 +146,14 @@ class DataConnector(
         verbose_name = _('Сериализатор')
         verbose_name_plural = _('Сериализаторы')
 
+    def __str__(self) -> str:
+        result = super().__str__()
+        if self._meta.verbose_name:
+            result = str(self._meta.verbose_name)
+            if self.content_type:
+                result += f': {self.content_type.model_class().__name__}'
+        return result
+
 
 class RemoteSite(models.Model):
     """
@@ -268,12 +276,12 @@ class Transmitter(models.Model):
             else:
                 queryset = SomeModel.objects.all()
 
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': 'Token af31a5a47b2972c8b99957eabe845b94f863eb12'
+            }
             if self.action == 'send':
                 serializer_data = self.serializer.serialize(queryset)
-                headers = {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Token 1f1fee896c312a8d81b307fba57cbc6ffdc69b07'
-                }
                 print('serializer_data', serializer_data)
                 print('headers', headers)
                 response = requests.post(
@@ -296,6 +304,46 @@ class Transmitter(models.Model):
                         result=response.text,
                     )
 
+            elif self.action == 'receive':
+                url = f'https://{self.remote_site.domain}/data_connector/super-api/{self.serializer.content_type.app_label}__{self.serializer.content_type.model}/'
+                if self.model_id:
+                    url += f'{self.model_id}/form/'
+
+                print('url', url)
+                response = requests.get(
+                    url,
+                    headers=headers,
+                    verify=False, 
+                )
+                print('response', response)
+
+                if response.status_code != 200:
+                    TransmitterLog.objects.create(
+                        transmitter=self,
+                        status='failure',
+                        result=response.text,
+                    )
+                else:
+                    response_data = response.json()
+                    response_data = response_data['data']
+                    print('response_data', response_data)
+                    # is_valid, validate_data = self.serializer.validate(response_data)
+
+                    # if not is_valid:
+                    #     TransmitterLog.objects.create(
+                    #         transmitter=self,
+                    #         status='failure',
+                    #         result=validate_data,
+                    #     )
+                    # else:
+                    some_model, error_data = self.serializer.deserialize(response_data)
+                    print('some_model', some_model)
+                    if error_data:
+                        TransmitterLog.objects.create(
+                            transmitter=self,
+                            status='failure',
+                            result=error_data,
+                        )
 
         if self.run_on_save:
             self.run_on_save = False
