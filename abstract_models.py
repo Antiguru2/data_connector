@@ -61,6 +61,7 @@ class SerializerFieldAbstractModel(DCNameAbstractModel):
         ('cargo_calc__transit_route', 'cargo_calc__transit_route'),
         ('cargo_calc__services', 'cargo_calc__services'),
         ('cargo_calc__prices', 'cargo_calc__prices'),
+        ('cargo_calc__agent', 'cargo_calc__agent'),
     )
     METHOD_CHOICES = (
         ('get', 'Найти'),
@@ -243,3 +244,19 @@ class DataConnectorAbstractModel(DCBaseContentObject):
         verbose_name = _('Сериализатор')
         verbose_name_plural = _('Сериализаторы')
 
+
+class DataConnectorAbstractAdditionalFields(models.Model):
+    """
+    Абстрактный класс для добавления дополнительных полей к обьектам связанным с сериализатором.
+    """
+    key_fields_cache = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name=_('Кэш ключевых полей'),
+    )
+
+    class Meta:
+        abstract = True
+        verbose_name = _('Дополнительные поля')
+        verbose_name_plural = _('Дополнительные поля')

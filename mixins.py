@@ -1,5 +1,8 @@
+import json
+import hashlib
+
 from pprint import pprint
-from typing import Optional, Union
+from typing import Optional, Union, Any
 
 from django.db import models
 from django.contrib import admin
@@ -7,8 +10,10 @@ from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from django.contrib.contenttypes.models import ContentType
 
+from data_connector.locales import RELATED_FIELD_TYPES
 from .abstract_models import SerializerFieldAbstractModel, DataConnectorAbstractModel
 from .field_handlers import *
+from .registry import field_registry
 
 
 class SerializerFieldMixin:
@@ -30,7 +35,14 @@ class SerializerFieldMixin:
         Returns:
             FieldHandler: Обработчик поля, соответствующий типу поля.
         """
-        handler_type = self.type_for_handler if self.type_for_handler else self.type  
+        handler_type = self.type_for_handler if self.type_for_handler else self.type
+        
+        # Проверяем, есть ли кастомный обработчик
+        custom_handler_class = field_registry.get_handler('field', handler_type)
+        if custom_handler_class:
+            return custom_handler_class(name=handler_type)
+        
+        # Возвращаем стандартный обработчик
         return FieldHandler(name=handler_type)
 
     def get_super_handler(self, data_type: str):
@@ -50,6 +62,13 @@ class SerializerFieldMixin:
             IncomingFieldHandler: Обработчик входящих данных.
         """
         handler_type = self.incoming_handler if self.incoming_handler else self.type
+        
+        # Проверяем, есть ли кастомный обработчик
+        custom_handler_class = field_registry.get_handler('input', handler_type)
+        if custom_handler_class:
+            return custom_handler_class(name=handler_type)
+        
+        # Возвращаем стандартный обработчик
         return IncomingFieldHandler(name=handler_type)
 
     
@@ -62,6 +81,13 @@ class SerializerFieldMixin:
             FormFieldHandler: Обработчик форм.
         """
         handler_type = self.type_for_form_handler if self.type_for_form_handler else self.type
+        
+        # Проверяем, есть ли кастомный обработчик
+        custom_handler_class = field_registry.get_handler('form', handler_type)
+        if custom_handler_class:
+            return custom_handler_class(name=handler_type)
+        
+        # Возвращаем стандартный обработчик
         return FormFieldHandler(name=handler_type)
     
     def get_structure_handler(self):
@@ -71,12 +97,24 @@ class SerializerFieldMixin:
         Returns:
             StructureFieldHandler: Обработчик структуры данных.
         """
+        # Проверяем, есть ли кастомный обработчик
+        custom_handler_class = field_registry.get_handler('structure', self.type)
+        if custom_handler_class:
+            return custom_handler_class(name=self.type)
+        
+        # Возвращаем стандартный обработчик
         return StructureFieldHandler(name=self.type)
 
     def get_validate_handler(self):
         """
         Возвращает обработчик для валидации данных.
         """
+        # Проверяем, есть ли кастомный обработчик для конкретного поля
+        custom_handler_class = field_registry.get_handler('validate', self.name)
+        if custom_handler_class:
+            return custom_handler_class(name=self.type)
+        
+        # Возвращаем стандартный обработчик
         return ValidateFieldHandler(name=self.type)
 
 
@@ -225,7 +263,7 @@ class DataConnectorMixin:
 
         return comment, response_status, response_data
     
-    def get_data(self, queryset: models.QuerySet):
+    def get_data(self, queryset: models.QuerySet, **kwargs):
         """
         Получает сериализованные данные.
         
@@ -237,7 +275,7 @@ class DataConnectorMixin:
         """
         response_data = {}
         try:
-            response_data = self.serialize(queryset)
+            response_data = self.serialize(queryset, **kwargs)
         except Exception as error:
             traceback.print_exc()
             print('DataConnectorMixin.get_data() error', error)
@@ -255,6 +293,9 @@ class DataConnectorMixin:
         Returns:
             list: Сериализованные данные.
         """
+        # print(f'DataConnectorMixin.serialize() !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        # print(f'self.name: {self.name}')
+        # print(f'self.data_type: {self.data_type}')
         serializer_data = []
         if self.data_type == 'rest':
             serializer_data = self.serialize_rest_data(queryset, **kwargs)
@@ -265,7 +306,7 @@ class DataConnectorMixin:
 
         return serializer_data
     
-    def serialize_rest_data(self, queryset: models.QuerySet, **kwargs):
+    def serialize_rest_data(self, queryset: models.QuerySet, debug: bool = False, diving_depth: Union[int, str] = 0, level: int = 0, **kwargs):
         """
         Сериализует данные в REST формате.
         
@@ -288,8 +329,14 @@ class DataConnectorMixin:
                     serializer_field_name = serializer_field.name
                     if serializer_field.alt_key:
                         serializer_field_name = serializer_field.alt_key
+
+                    # if serializer_field_name == 'created':
+                    #     print('created', serializer_field.type)
+                    user = None
+                    if hasattr(handler, 'user'):
+                        user = self.user
                         
-                    value = handler.get_value(obj, serializer_field)
+                    value = handler.get_value(obj, serializer_field, debug=debug, diving_depth=diving_depth, level=level, user=user, **kwargs)
 
                 fields_data[serializer_field_name] = value
 
@@ -399,6 +446,7 @@ class DataConnectorMixin:
         Returns:
             tuple[bool, dict]: (результат валидации, словарь с исходными данными, дополненными информацией о валидации)
         """
+        # print(f'validate_form_data')
         validate_data = []
         serializer_fields = self.get_serializer_fields()
         is_valid = True
@@ -411,7 +459,9 @@ class DataConnectorMixin:
                 continue
 
             validate_handler = serializer_field.get_validate_handler()
+            # print(f'field_name: {field_name}')
             field_is_valid, validate_field_data = validate_handler.validate(field, serializer_field, level=level)
+            # print(f'field_is_valid: {field_is_valid}')
             if not field_is_valid and level == 0:
                 validate_data.insert(0, validate_field_data)
             else:
@@ -508,8 +558,8 @@ class DataConnectorMixin:
         """
         Десериализует входящие данные в формате FORM.
         """
-        print(f'DataConnector.deserialize_form_data() !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-        print(f'method: {method}')
+        # print(f'DataConnector.deserialize_form_data() !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        # print(f'method: {method}')
         some_model_class: models.Model = self.content_type.model_class()
         model_data = [request_data] if isinstance(request_data, dict) else request_data
         serializer_fields = self.get_serializer_fields()
@@ -552,7 +602,7 @@ class DataConnectorMixin:
                 continue
 
             field_name = model_field_data.get('name')
-            print(f'field_name: {field_name} =======================================================')
+            # print(f'field_name: {field_name} =======================================================')
             field_value = model_field_data.get('value')
 
             serializer_field = serializer_fields.filter(name=field_name).first()
@@ -560,7 +610,7 @@ class DataConnectorMixin:
             input_handler: IncomingFieldHandler = serializer_field.get_input_handler()
             transform_field_name, transform_field_value, error = input_handler.get_transform_data(field_value, serializer_field)
 
-            print(f'transform_field_name: {transform_field_name}')
+            # print(f'transform_field_name: {transform_field_name}')
             # print(f'transform_field_value: {transform_field_value}')
 
             setattr(some_model, transform_field_name, transform_field_value)
@@ -578,10 +628,98 @@ class DataConnectorMixin:
             # error_data[field_name] = error            
             # setattr(some_model, transform_field_name, transform_field_value)
         
+        if hasattr(some_model, 'key_fields_cache'):
+            some_model.key_fields_cache = hashlib.sha256(json.dumps(self.get_key_fields_data(model_data), sort_keys=True).encode()).hexdigest()
+
         some_model.data_connector_finish_save = True
         some_model.save()
 
         return some_model, model_data
+    
+    def get_key_fields_data(self, model_data):
+        """
+        Получает ключевые поля данных.
+        
+        Извлекает только ключевые поля (is_key_field=True) из model_data,
+        сохраняя вложенность для связанных полей (ForeignKey, ManyToManyField и т.д.).
+        Проверка происходит только на верхнем уровне данных.
+        
+        Args:
+            model_data: Список словарей с данными модели в формате form_data
+            
+        Returns:
+            dict: Словарь с ключевыми полями и их значениями
+        """
+        key_fields_data = {}
+        
+        # Получаем ключевые поля сериализатора
+        serializer_key_fields = self.get_serializer_fields({
+            'is_key_field': True,
+            'is_active': True,
+        })
+        
+        if not serializer_key_fields.exists():
+            return key_fields_data
+        
+        # Обрабатываем каждое поле в model_data
+        for model_field_data in model_data:
+            field_name = model_field_data.get('name')
+            field_value = model_field_data.get('value')
+            
+            # Ищем соответствующее поле сериализатора
+            serializer_field = serializer_key_fields.filter(name=field_name).first()
+            
+            if serializer_field and field_value is not None:
+                # Для связанных полей сохраняем всю вложенность
+                if serializer_field.type in RELATED_FIELD_TYPES:
+                    key_fields_data[field_name] = field_value
+                else:
+                    # Для простых полей сохраняем только значение
+                    key_fields_data[field_name] = field_value
+        
+        return key_fields_data
+    
+    def check_duplicate_object(self, model_data) -> tuple[bool, str, models.QuerySet]:
+        """
+        Проверяет наличие дубликатов объекта на основе ключевых полей.
+        
+        Если у класса сохраняемого объекта существует поле key_fields_cache,
+        то ищет совпадения по этому полю. Иначе ничего не делает.
+        
+        Args:
+            model_data: Список словарей с данными модели в формате form_data
+            
+        Returns:
+            tuple: (is_valid, error_text) - валидность данных и текст ошибки
+        """
+        is_valid = True
+        error_text = None
+        
+        # Получаем модель из content_type
+        model_class = self.content_type.model_class()
+        
+        # Проверяем, есть ли у модели поле key_fields_cache
+        if not hasattr(model_class, 'key_fields_cache'):
+            return is_valid, error_text
+                
+        # Получаем ключевые поля данных
+        key_fields_data = self.get_key_fields_data(model_data)
+        
+        if not key_fields_data:
+            return is_valid, error_text
+        
+        # Создаем хеш ключевых полей для поиска
+        key_fields_cache = hashlib.sha256(json.dumps(key_fields_data, sort_keys=True).encode()).hexdigest()
+        # print(f'key_fields_cache: {key_fields_cache}')
+        
+        # Ищем существующие объекты с таким же хешем ключевых полей
+        duplicate_objects = model_class.objects.filter(key_fields_cache=key_fields_cache)
+        
+        if duplicate_objects.exists():
+            is_valid = False
+            error_text = f'⚠️ Такие данные уже были сохранены'
+        
+        return is_valid, error_text, duplicate_objects
 
     def get_serializer_fields_class(self):
         """
@@ -600,7 +738,7 @@ class DataConnectorMixin:
             serializer_fields = self.serializer_fields.filter(**filter).order_by('order')
             return serializer_fields
         except Exception as error:
-            print('DataConnector not serializer_fields')
+            # print('DataConnector not serializer_fields')
             # print('DataConnectorMixin.get_serializer_fields() error', error)
             # traceback.print_exc()
             serializer_fields = []
@@ -610,6 +748,10 @@ class DataConnectorMixin:
         for model_field in model._meta.get_fields():
             field_type = model_field.__class__.__name__
             verbose_name = getattr(model_field, 'verbose_name', model_field.name)
+
+            related_model = None
+            if field_type in RELATED_FIELD_TYPES:
+                related_model = model_field.related_model
             
             serializer_field = self.get_serializer_fields_class()(
                 data_connector=self,
@@ -617,6 +759,7 @@ class DataConnectorMixin:
                 name=model_field.name,
                 type=field_type,
             )
+            serializer_field.related_model = related_model
             serializer_fields.append(serializer_field)
         
         return serializer_fields

@@ -1,14 +1,15 @@
 import re
 import traceback
 
+from typing import Union
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from django.db import models
+from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 
-from calculator.models import DeliveryRoute, DeliveryRouteSegment, DeliveryPoint, RouteSegment, TransportType
-
+from data_connector.locales import RELATED_FIELD_TYPES
 
 class Handler():
     """
@@ -23,7 +24,7 @@ class FieldHandler(Handler):
         Класс, инструкция для обработки поля.
     """
 
-    def get_value(self, obj, serializer_field: models.Model):
+    def get_value(self, obj, serializer_field: models.Model, debug: bool = False, diving_depth: Union[int, str] = 0, level: int = 0, user: models.Model = None, **kwargs):
         serializer_field_name = serializer_field.name
         value = 'Не найдено'
 
@@ -33,26 +34,28 @@ class FieldHandler(Handler):
                 try:
                     value = getattr(obj, serializer_field_name)
                 except Exception as e:
-                    print('FieldHandler.get_value() error in isinstance(obj, models.Model)', e)
-                    value = f'Ошибка: {e}'
+                    if debug:
+                        print('FieldHandler.get_value() error in isinstance(obj, models.Model)', e)
+                        value = f'Ошибка: {e}'
 
         elif isinstance(obj, dict):
             obj: dict
             if serializer_field_name in obj.keys():
                 try:
                     value = obj.get(serializer_field_name)
-                    # print('value', value)
                 except Exception as e:
-                    print('FieldHandler.get_value() error in isinstance(obj, dict)', e)
-                    value = f'Ошибка: {e}'
+                    if debug:
+                        print('FieldHandler.get_value() error in isinstance(obj, dict)', e)
+                        value = f'Ошибка: {e}'
 
         if self.name == 'default':
             if hasattr(obj, serializer_field_name):
                 try:
                     value = getattr(obj, serializer_field_name)
                 except Exception as e:
-                    print('FieldHandler.get_value() error in if hasattr(obj, serializer_field_name)', e)
-                    value = f'Ошибка: {e}'
+                    if debug:
+                        print('FieldHandler.get_value() error in if hasattr(obj, serializer_field_name)', e)
+                        value = f'Ошибка: {e}'
 
         elif serializer_field.serializer:
             serializer = serializer_field.serializer
@@ -82,42 +85,61 @@ class FieldHandler(Handler):
                 else:
                     value = serializer.get_data(queryset)
             except Exception as e:
-                print('FieldHandler.get_value() error in serializer', e)
-                value = f'Ошибка: {e}'
+                if debug:
+                    print('FieldHandler.get_value() error in serializer', e)
+                    value = f'Ошибка: {e}'
 
-        elif self.name == 'ForeignKey':
-            try:
-                rel_object = getattr(obj, serializer_field_name)
-                if rel_object and hasattr(rel_object, 'id'):
-                    value = rel_object.id
-                else:
-                    value = None
-            except Exception as e:
-                print('FieldHandler.get_value() error in ForeignKey', e)
-                value = f'Ошибка: {e}'    
+        elif self.name in RELATED_FIELD_TYPES:
+            serializer = None
+            if diving_depth and (diving_depth == 'max' or diving_depth >= level):
+                from data_connector.models import DataConnector
+                serializer = DataConnector.get_serializer(
+                    some_model=serializer_field.related_model,
+                    user=user,
+                )
+                
+            if self.name == 'ForeignKey':
+                try:
+                    rel_object = getattr(obj, serializer_field_name)
+                    if rel_object and hasattr(rel_object, 'id'):
+                        value = rel_object.id
+                    else:
+                        value = None
+                except Exception as e:
+                    if debug:
+                        print('FieldHandler.get_value() error in ForeignKey', e)
+                        value = f'Ошибка: {e}'    
 
-        elif self.name == 'OneToOneField':
-            try:
-                object = getattr(obj, serializer_field_name)
-                value = object.id
-            except Exception as e:
-                print('FieldHandler.get_value() error in OneToOneField', e)
-                value = f'Ошибка: {e}'  
+            elif self.name == 'OneToOneField':
+                try:
+                    object = getattr(obj, serializer_field_name)
+                    value = object.id
+                except Exception as e:
+                    if debug:
+                        print('FieldHandler.get_value() error in OneToOneField', e)
+                        value = f'Ошибка: {e}'  
 
-        elif self.name == 'ManyToManyField':
-            try:
-                value = list(getattr(obj, serializer_field_name).all().values_list('id', flat=True))
-            except Exception as e:
-                # print('serializer_field_name', serializer_field_name)
-                print('FieldHandler.get_value() error in ManyToManyField', e)
-                value = f'Ошибка: {e}' 
+            elif self.name == 'ManyToManyField':
+                try:
+                    value = list(getattr(obj, serializer_field_name).all().values_list('id', flat=True))
+                except Exception as e:
+                    if debug:
+                        print('FieldHandler.get_value() error in ManyToManyField', e)
+                        value = f'Ошибка: {e}' 
 
-        elif self.name == 'ManyToOneRel':
-            try:
-                value = getattr(obj, serializer_field_name).all().values_list('id', flat=True)
-            except Exception as e:
-                print('FieldHandler.get_value() error in ManyToOneRel', e)
-                value = f'Ошибка: {e}'
+            elif self.name == 'ManyToOneRel':
+                try:
+                    value = list(getattr(obj, serializer_field_name).all().values_list('id', flat=True))
+                except Exception as e:
+                    if debug:
+                        print('FieldHandler.get_value() error in ManyToOneRel', e)
+                        value = f'Ошибка: {e}'
+
+            if serializer and isinstance(value, list):
+                print(f'value: {value}')
+                queryset = serializer_field.related_model.objects.filter(id__in=value)
+                print(f'queryset: {queryset}')
+                value = serializer.get_data(queryset)
 
         elif self.name == 'FileField':
             try:
@@ -127,8 +149,9 @@ class FieldHandler(Handler):
                 else:
                     value = file.url
             except Exception as e:
-                print('FieldHandler.get_value() error in FileField', e)
-                value = f'Ошибка: {e}' 
+                if debug:
+                    print('FieldHandler.get_value() error in FileField', e)
+                    value = f'Ошибка: {e}' 
 
         elif self.name == 'DateField':
             try:
@@ -137,8 +160,20 @@ class FieldHandler(Handler):
                 else:
                     value = None
             except Exception as e:
-                print('FieldHandler.get_value() error in DateField', e)
-                value = f'Ошибка: {e}' 
+                if debug:
+                    print('FieldHandler.get_value() error in DateField', e)
+                    value = f'Ошибка: {e}'
+
+        elif self.name == 'DateTimeField':
+            try:
+                if getattr(obj, serializer_field_name):
+                    value = getattr(obj, serializer_field_name).strftime('%d.%m.%Y %H:%M:%S')          
+                else:
+                    value = None
+            except Exception as e:
+                if debug:
+                    print('FieldHandler.get_value() error in DateTimeField', e)
+                    value = f'Ошибка: {e}'
 
         # print('value', value)   
         return value
@@ -163,86 +198,7 @@ class IncomingFieldHandler(Handler):
         transform_field_name = serializer_field.name
         transform_field_value = value
 
-        # print(f'serializer_field.incoming_handler', serializer_field.incoming_handler)
-
-        if serializer_field.incoming_handler == 'cargo_calc__route':
-            delivery_route = DeliveryRoute.objects.create()
-            for point in value:
-                if point.get('name') == 'from_airport_code':
-                    from_delivery_point, created = DeliveryPoint.objects.get_or_create(unic_code=point.get('value'))
-                elif point.get('name') == 'to_airport_code':
-                    to_delivery_point, created = DeliveryPoint.objects.get_or_create(unic_code=point.get('value'))
-
-            route_segment, created = RouteSegment.objects.get_or_create(
-                from_point=from_delivery_point, 
-                to_point=to_delivery_point,
-                transport_type=TransportType.objects.get(unic_code='AIR'),
-            )
-                
-            delivery_route_segment = DeliveryRouteSegment.objects.create(
-                delivery_route=delivery_route,
-                route_segment=route_segment,
-            )
-
-            if serializer_field.real_field_name:
-                transform_field_name = serializer_field.real_field_name
-
-            transform_field_name += '_id'
-            transform_field_value = delivery_route.id
-
-        elif serializer_field.incoming_handler == 'cargo_calc__transit_route':
-            delivery_route = DeliveryRoute.objects.create()
-
-            delivery_route_segments_data = value[0].get('value')
-            for delivery_route_segment_data in delivery_route_segments_data:
-                for delivery_route_segment_field in delivery_route_segment_data:
-                    if delivery_route_segment_field.get('name') == 'order':
-                        order = delivery_route_segment_field.get('value')
-                    if delivery_route_segment_field.get('name') == 'route_segment':
-                        route_segment_data = delivery_route_segment_field.get('value')
-
-                for item in route_segment_data:
-                    unic_code = item.get('value')[0].get('value')
-                    if item.get('name') == 'from_point':
-                        from_point, created = DeliveryPoint.objects.get_or_create(unic_code=unic_code)
-                    elif item.get('name') == 'to_point':
-                        to_point, created = DeliveryPoint.objects.get_or_create(unic_code=unic_code)
-                        
-                route_segment, created = RouteSegment.objects.get_or_create(
-                    from_point=from_point, 
-                    to_point=to_point,
-                    transport_type=TransportType.objects.get(unic_code='AIR'),
-                )
-
-                delivery_route_segment = DeliveryRouteSegment.objects.create(
-                    delivery_route=delivery_route,
-                    route_segment=route_segment,
-                    order=order,
-                )
-
-            transform_field_name += '_id'
-            transform_field_value = delivery_route.id
-            
-                    
-        elif serializer_field.incoming_handler == 'cargo_calc__services':
-            for item in value:
-                service, service_data = serializer_field.serializer.deserialize(item)
-                service.delivery_info = self.some_model
-                service.save()
-
-        elif serializer_field.incoming_handler == 'cargo_calc__prices':
-            for item in value:
-                price, price_data = serializer_field.serializer.deserialize(item)
-                if self.some_model:
-                    price.content_type = ContentType.objects.get_for_model(self.some_model)
-                    price.object_id = self.some_model.id
-                    price.name = 'price' if 'price' in serializer_field.name else serializer_field.name
-                    price.save()
-
-
-
-
-        elif serializer_field.serializer:
+        if serializer_field.serializer:
             # print(f'serializer_field.serializer: {serializer_field.serializer}')
             serializer = serializer_field.serializer
             try:
@@ -365,36 +321,7 @@ class ValidateFieldHandler(Handler):
             'is_valid': True,
         })
 
-        if serializer_field.name in ['to_airport_code', 'from_airport_code']:
-            if not re.match(r'^[A-Z]{3}$', value):
-                result_data.update({
-                    'error_text': 'Код аэропорта должен содержать 3 буквы(XXX)',
-                    'is_valid': False
-                })
-
-        elif serializer_field.name == 'transport_company':
-            transport_company_unic_code = value[0].get('value')
-            if not transport_company_unic_code:
-                result_data.update({
-                    'error_text': 'Транспортная компания не может быть пустой',
-                    'is_valid': False
-                })
-            else:
-                if not re.match(r'^[A-Z0-9]{2}$', transport_company_unic_code):
-                    result_data.update({
-                        'error_text': 'Код транспортной компании должен содержать 2 символа (буквы или цифры)',
-                        'is_valid': False
-                    })
-
-        elif serializer_field.name == 'awb_num':
-            # Должен быть в формате 550-66590878
-            if not re.match(r'^[0-9]{3}-[0-9]{8}$', value):
-                result_data.update({
-                    'error_text': 'Номер AWB должен быть в формате 550-66590878',
-                    'is_valid': False
-                })
-
-        elif serializer_field.serializer:
+        if serializer_field.serializer:
             serializer = serializer_field.serializer
             try:
                 if serializer_field.type in ['ForeignKey', 'OneToOneField',]:
@@ -420,16 +347,16 @@ class ValidateFieldHandler(Handler):
                     })
 
                     # Для time_price
-                    if serializer_field.name in ['total_price', 'rate']:
-                        # print("serializer_field.name in ['total_price', 'rate']")
-                        # print("items_is_valid", items_is_valid)
-                        # print("serializer_field.is_required", serializer_field.is_required)
-                        if (not items_is_valid or value == []) and not serializer_field.is_required:
-                            result_data.update({
-                                'info_text': 'Значение не было определено',
-                                'is_valid': True,
-                                'value': []
-                            })
+                    # if serializer_field.name in ['total_price', 'rate']:
+                    #     # print("serializer_field.name in ['total_price', 'rate']")
+                    #     # print("items_is_valid", items_is_valid)
+                    #     # print("serializer_field.is_required", serializer_field.is_required)
+                    #     if (not items_is_valid or value == []) and not serializer_field.is_required:
+                    #         result_data.update({
+                    #             'info_text': 'Значение не было определено',
+                    #             'is_valid': True,
+                    #             'value': []
+                    #         })
                         # print("result_data", result_data)
                     
                 elif serializer_field.type == 'GenericForeignKey':
@@ -440,6 +367,10 @@ class ValidateFieldHandler(Handler):
                     'error_text': f'Ошибка: {e}',
                     'is_valid': False
                 })
+
+        elif serializer_field.type == 'CharField':
+            if not value:
+                result_data['value'] = None
 
         elif serializer_field.type == 'IntegerField':
             try:
@@ -486,6 +417,7 @@ class ValidateFieldHandler(Handler):
                     'info_text': 'Значение не было определено',
                 })
 
+        # print(f'result_data: {result_data}')
         if result_data['value'] is None:
             if serializer_field.is_required:
                 result_data.update({
