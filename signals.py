@@ -152,8 +152,8 @@ def create_serializer_fields(sender: DataConnector, instance: DataConnector, cre
         model_fields = instance.content_type.model_class()._meta.get_fields()
         for model_field in model_fields:
             
-            print('model_field', model_field)
-            print('model_field.name', model_field.name)
+            # print('model_field', model_field)
+            # print('model_field.name', model_field.name)
             try:
                 verbose_name = model_field.verbose_name
             except:
@@ -168,8 +168,8 @@ def create_serializer_fields(sender: DataConnector, instance: DataConnector, cre
             related_model = None
             serializer_field_name = model_field.name
 
-            print('field_type', field_type)
-            print('serializer_field_name', serializer_field_name)
+            # print('field_type', field_type)
+            # print('serializer_field_name', serializer_field_name)
 
             if field_type in ('ManyToOneRel', 'GenericRelation'):
                 if hasattr(model_field, 'related_name') and model_field.related_name:
@@ -182,7 +182,7 @@ def create_serializer_fields(sender: DataConnector, instance: DataConnector, cre
                     related_model = model_field.related_model
 
 
-            print('related_model', related_model)
+            # print('related_model', related_model)
             serializer_field = instance.get_serializer_fields_class().objects.create(
                 data_connector=instance,
                 verbose_name=verbose_name,

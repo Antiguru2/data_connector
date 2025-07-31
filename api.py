@@ -155,7 +155,6 @@ class SuperApiView(APIView):
             except FieldError:
                 pass
 
-        # print('django_filter', django_filter)
         return django_filter
     
     def get_arg(self, arg):

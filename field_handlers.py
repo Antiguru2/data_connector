@@ -136,9 +136,9 @@ class FieldHandler(Handler):
                         value = f'Ошибка: {e}'
 
             if serializer and isinstance(value, list):
-                print(f'value: {value}')
+                # print(f'value: {value}')
                 queryset = serializer_field.related_model.objects.filter(id__in=value)
-                print(f'queryset: {queryset}')
+                # print(f'queryset: {queryset}')
                 value = serializer.get_data(queryset)
 
         elif self.name == 'FileField':
