@@ -156,7 +156,7 @@ class FieldHandler(Handler):
         elif self.name == 'DateField':
             try:
                 if getattr(obj, serializer_field_name):
-                    value = getattr(obj, serializer_field_name).strftime('%d.%m.%Y')          
+                    value = getattr(obj, serializer_field_name).strftime('%Y-%m-%d')          
                 else:
                     value = None
             except Exception as e:
@@ -167,7 +167,7 @@ class FieldHandler(Handler):
         elif self.name == 'DateTimeField':
             try:
                 if getattr(obj, serializer_field_name):
-                    value = getattr(obj, serializer_field_name).strftime('%d.%m.%Y %H:%M:%S')          
+                    value = getattr(obj, serializer_field_name).strftime('%Y-%m-%d %H:%M:%S')          
                 else:
                     value = None
             except Exception as e:
@@ -242,21 +242,19 @@ class IncomingFieldHandler(Handler):
                     transform_field_value = validated_items
 
                 elif serializer_field.type == 'PseudoManyToManyField':
-                    # print('PseudoManyToManyField 111')
                     validated_items = []
                     for item in value:
-                        model_class = serializer.content_type.model_class()
-                        # print('model_class', model_class)
+                        parent_model_class = serializer_field.data_connector.content_type.model_class()
+                        model_class = serializer_field.serializer.content_type.model_class()
                         for some_model_field in model_class._meta.get_fields():
-                            if some_model_field.related_model == self.some_model.__class__:
-                                # print('break')
-                                item[some_model_field.name] = self.some_model
+                            if some_model_field.related_model == parent_model_class:
                                 item.append({
                                     'name': f'{some_model_field.name}_id',
                                     'value': self.some_model.id
                                 })                                
                                 break
-                        # print('item', item)
+                            
+                        serializer.staff_field = serializer.get_serializer_fields({'name': some_model_field.name}).first()
                         item_value, item_error = serializer.deserialize(
                             item,
                             method=serializer_field.incoming_method
@@ -270,7 +268,11 @@ class IncomingFieldHandler(Handler):
                 elif serializer_field.type == 'GenericForeignKey':
                     pass                 
             except Exception as e:
-                print('IncomingFieldHandler.get_transform_data() error in serializer', e)
+                print(f'----------------------------')
+                print(f'IncomingFieldHandler.get_transform_data() error in serializer: {serializer_field.name}')
+                print(f'error text: {e}')
+                traceback.print_exc()
+                print(f'============================')
                 field_error_data[transform_field_name] = f'Ошибка: {e}'
 
         elif self.name == 'ForeignKey':
@@ -289,7 +291,7 @@ class IncomingFieldHandler(Handler):
 
         elif self.name == 'DateField':
             try:
-                transform_field_value = datetime.strptime(transform_field_value, '%d.%m.%Y')
+                transform_field_value = datetime.strptime(transform_field_value, '%Y-%m-%d')
             except Exception as e:
                 print('IncomingFieldHandler.get_transform_data() error in DateField', e)
                 transform_field_value = None
@@ -314,6 +316,8 @@ class ValidateFieldHandler(Handler):
         Returns:
             tuple: (данные с информацией о валидации, результат валидации)
         """
+        print('default')
+        print('validate', serializer_field.name)
         value = result_data.get('value')
         result_data.update({
             'error_text': None,
@@ -331,7 +335,7 @@ class ValidateFieldHandler(Handler):
                         'value': data,
                     })
                     
-                elif serializer_field.type == 'ManyToManyField':
+                elif serializer_field.type in ['ManyToManyField', 'PseudoManyToManyField']:
                     validated_items = []
                     items_is_valid = True
                     

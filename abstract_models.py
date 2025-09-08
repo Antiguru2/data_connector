@@ -57,8 +57,7 @@ class SerializerFieldAbstractModel(DCNameAbstractModel):
         ('GenericForeignKey', 'GenericForeignKey'),
         ('serializer', 'serializer'),
         # unique
-        ('cargo_calc__route', 'cargo_calc__route'),
-        ('cargo_calc__transit_route', 'cargo_calc__transit_route'),
+        ('cargo_calc__route_segment', 'cargo_calc__route_segment'),
         ('cargo_calc__services', 'cargo_calc__services'),
         ('cargo_calc__prices', 'cargo_calc__prices'),
         ('cargo_calc__agent', 'cargo_calc__agent'),

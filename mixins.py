@@ -105,13 +105,13 @@ class SerializerFieldMixin:
         # Возвращаем стандартный обработчик
         return StructureFieldHandler(name=self.type)
 
-    def get_validate_handler(self):
+    def get_validate_handler(self, default=False):
         """
         Возвращает обработчик для валидации данных.
         """
         # Проверяем, есть ли кастомный обработчик для конкретного поля
         custom_handler_class = field_registry.get_handler('validate', self.name)
-        if custom_handler_class:
+        if custom_handler_class and not default:
             return custom_handler_class(name=self.type)
         
         # Возвращаем стандартный обработчик
@@ -606,6 +606,8 @@ class DataConnectorMixin:
             field_value = model_field_data.get('value')
 
             serializer_field = serializer_fields.filter(name=field_name).first()
+            if not serializer_field and self.staff_field:
+                serializer_field = self.staff_field
 
             input_handler: IncomingFieldHandler = serializer_field.get_input_handler()
             transform_field_name, transform_field_value, error = input_handler.get_transform_data(field_value, serializer_field)
