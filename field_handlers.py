@@ -316,8 +316,6 @@ class ValidateFieldHandler(Handler):
         Returns:
             tuple: (данные с информацией о валидации, результат валидации)
         """
-        print('default')
-        print('validate', serializer_field.name)
         value = result_data.get('value')
         result_data.update({
             'error_text': None,
