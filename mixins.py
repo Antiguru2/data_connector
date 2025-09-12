@@ -54,21 +54,34 @@ class SerializerFieldMixin:
         else:
             return None
     
-    def get_input_handler(self):
+    def get_input_handler(self, default=False):
         """
         Возвращает обработчик для входящих данных.
+        
+        Args:
+            default (bool): Если True — вернуть стандартный обработчик по типу,
+                игнорируя кастомные обработчики (по имени/по incoming_handler).
         
         Returns:
             IncomingFieldHandler: Обработчик входящих данных.
         """
+        # Если запрошена стандартная обработка — игнорируем любые кастомы
+        if default:
+            handler_type = self.type
+            return IncomingFieldHandler(name=handler_type)
+
+        # 1) Кастомный обработчик по имени поля (приоритет как в validate)
+        custom_by_name = field_registry.get_handler('input', self.name)
+        if custom_by_name:
+            return custom_by_name(name=self.name)
+
+        # 2) Кастомный обработчик по incoming_handler (старое поведение)
         handler_type = self.incoming_handler if self.incoming_handler else self.type
-        
-        # Проверяем, есть ли кастомный обработчик
-        custom_handler_class = field_registry.get_handler('input', handler_type)
-        if custom_handler_class:
-            return custom_handler_class(name=handler_type)
-        
-        # Возвращаем стандартный обработчик
+        custom_by_type = field_registry.get_handler('input', handler_type)
+        if custom_by_type:
+            return custom_by_type(name=handler_type)
+
+        # 3) Дефолтный обработчик
         return IncomingFieldHandler(name=handler_type)
 
     
@@ -540,7 +553,7 @@ class DataConnectorMixin:
 
                 try:
                     serializer_field = serializer_fields.filter(name=field_name).first()
-                    input_handler: FieldHandler = serializer_field.get_handler()
+                    input_handler: IncomingFieldHandler = serializer_field.get_input_handler()
                     transform_field_name, transform_field_value, error = input_handler.get_transform_data(field_value, serializer_field)
                     error_data[field_name] = error
                     setattr(some_model, transform_field_name, transform_field_value)
