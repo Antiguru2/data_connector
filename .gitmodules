@@ -6,3 +6,6 @@
 	path = submodules/base_content_objects
 	url = https://github.com/Antiguru2/base_content_objects.git
 	branch = main
+[submodule "docs"]
+	path = docs
+	url = https://github.com/Antiguru2/data_connector_docs.git
