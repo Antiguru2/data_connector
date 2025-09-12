@@ -8,4 +8,5 @@
 	branch = main
 [submodule "docs"]
 	path = docs
+	branch = main
 	url = https://github.com/Antiguru2/data_connector_docs.git
