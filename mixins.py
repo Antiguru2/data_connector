@@ -566,7 +566,6 @@ class DataConnectorMixin:
             
         return [some_model]
 
-    # def deserialize_form_data(self, request_data, method: str, obj_id: Optional[int] = None):
     def deserialize_form_data(self, request_data, method: str = 'create', id_field_name: str = 'id', id_field_value: Union[int, str] = None) -> tuple[Optional[models.Model], list]:
         """
         Десериализует входящие данные в формате FORM.
@@ -629,6 +628,17 @@ class DataConnectorMixin:
             # print(f'transform_field_value: {transform_field_value}')
 
             setattr(some_model, transform_field_name, transform_field_value)
+
+        default_fields = serializer_fields.filter(default_object_id__isnull=False)
+        for default_field in default_fields:
+            if default_field.serializer and default_field.serializer.content_type and default_field.serializer.content_type.model_class():
+                default_objects: models.QuerySet = default_field.serializer.content_type.model_class().objects.filter(id=default_field.default_object_id)
+                if default_objects.exists():
+                    field_name = default_field.name
+                    if default_field.real_field_name:
+                        field_name = default_field.real_field_name  
+                    field_name += '_id'                  
+                    setattr(some_model, field_name, default_objects.first().id)
 
         some_model.save()
 

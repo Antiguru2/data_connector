@@ -118,20 +118,22 @@ class SerializerFieldAbstractModel(DCNameAbstractModel):
         verbose_name=_('Название поля для обработки входящих данных'),
         # help_text=_('Тип поля, используемый для обработки входящих данных. '
         #            'Определяет, как будут обрабатываться данные при десериализации.'),
-    )      
+    )  
+    default_object_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name=_('ID обьекта по умолчанию(⚠ Проверьте существует ли обьект)'),
+    )    
 
     alt_key = models.CharField(
         max_length=255,
-        null=True,
-        blank=True,
+        null=True, blank=True,
         verbose_name=_('Альтернативный ключ(под этим ключом будут возвращены данные)'),
         # help_text=_('Альтернативное имя поля, которое будет использоваться при сериализации. '
         #            'Позволяет изменить имя поля в выходных данных без изменения структуры модели.'),
     )
     real_field_name = models.CharField(
         max_length=255,
-        null=True,
-        blank=True,
+        null=True, blank=True,
         verbose_name=_('Реальное название поля'),
         # help_text=_('Альтернативное имя поля, которое будет использоваться при сериализации. '
         #            'Позволяет изменить имя поля в выходных данных без изменения структуры модели.'),
