@@ -163,7 +163,6 @@ cython_debug/
 
 
 # other
-migrations/
 local_files/
 local_router.py
 local_api.py
